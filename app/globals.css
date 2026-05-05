@@ -23,6 +23,11 @@ body,
 
 body {
   margin: 0;
+  background:
+    radial-gradient(circle at top left, rgba(28, 154, 160, 0.08), transparent 28%),
+    linear-gradient(180deg, #f7fbfd 0%, #edf4fa 100%);
+  color: #10243b;
+  font-family: "Avenir Next", "Inter", "Segoe UI", sans-serif;
 }
 
 button,

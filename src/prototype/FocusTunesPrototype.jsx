@@ -61,8 +61,197 @@ import {
 import { DEFAULT_SCREEN, getScreenFromPathname, getScreenPath, isValidScreen, screenLabels } from "./routes.js";
 const PrototypeContext = createContext(null);
 
+const PROTOTYPE_STORAGE_KEY = "focustunes.prototype.state";
+const TOAST_TIMEOUT_MS = 2600;
+const initialFilters = {
+  playlist: true,
+  lyrics: true,
+  noise: true,
+  offline: true,
+};
+const initialActivityMinutes = {
+  Coding: 684,
+  Writing: 432,
+  Study: 336,
+  Ride: 144,
+};
+const initialFocusStats = {
+  completedSessions: 26,
+  streakDays: 8,
+  totalFocusMinutes: 1452,
+  activityMinutes: initialActivityMinutes,
+  offlineSuccessRate: 97,
+  distractionDelta: -31,
+  savedPresets: 4,
+  lastSessionSummary: {
+    duration: sessionSummary.duration,
+    durationMinutes: 44,
+    skipCount: sessionSummary.skipCount,
+    blockedSuggestion: sessionSummary.blockedSuggestion,
+    savedSetup: sessionSummary.savedSetup,
+    completionRate: 91,
+    setupSeconds: 14,
+  },
+};
+
 function cx(...classes) {
   return classes.filter(Boolean).join(" ");
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function parseTrackLength(length = "0:00") {
+  const [minutes = "0", seconds = "0"] = String(length).split(":");
+  return Number(minutes) * 60 + Number(seconds);
+}
+
+function formatClock(totalSeconds) {
+  const safeSeconds = Math.max(0, Math.round(totalSeconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatDurationLabel(totalMinutes) {
+  return `${Math.max(1, Math.round(totalMinutes))} menit`;
+}
+
+function createSessionState(durationMinutes, overrides = {}) {
+  const totalSeconds = Math.max(60, Number(durationMinutes) * 60);
+  return {
+    hasStarted: false,
+    isActive: false,
+    totalSeconds,
+    remainingSeconds: totalSeconds,
+    skipCount: 0,
+    setupSeconds: 14,
+    initialQueueSize: initialQueueTracks.length,
+    ...overrides,
+  };
+}
+
+function normalizeFocusStats(stats = {}) {
+  return {
+    ...initialFocusStats,
+    ...stats,
+    activityMinutes: {
+      ...initialActivityMinutes,
+      ...stats.activityMinutes,
+    },
+    lastSessionSummary: {
+      ...initialFocusStats.lastSessionSummary,
+      ...stats.lastSessionSummary,
+    },
+  };
+}
+
+function normalizeSessionState(rawState, durationMinutes) {
+  if (!rawState || typeof rawState !== "object") {
+    return createSessionState(durationMinutes);
+  }
+
+  const fallback = createSessionState(durationMinutes);
+  const parsedTotalSeconds = Number(rawState.totalSeconds);
+  const parsedRemainingSeconds = Number(rawState.remainingSeconds);
+  const totalSeconds = Math.max(60, Number.isFinite(parsedTotalSeconds) ? parsedTotalSeconds : fallback.totalSeconds);
+  return {
+    ...fallback,
+    ...rawState,
+    totalSeconds,
+    remainingSeconds: clamp(Number.isFinite(parsedRemainingSeconds) ? parsedRemainingSeconds : totalSeconds, 0, totalSeconds),
+    skipCount: Math.max(0, Number(rawState.skipCount) || 0),
+    setupSeconds: Math.max(5, Number(rawState.setupSeconds) || fallback.setupSeconds),
+    initialQueueSize: Math.max(1, Number(rawState.initialQueueSize) || fallback.initialQueueSize),
+  };
+}
+
+function scoreTrackForFocus(track, blockedTracks) {
+  let score = 0;
+
+  if (track.offline) score += 2;
+  if (track.focusSafe !== false && !track.distracting) score += 2;
+  if (track.lyric === "EN") score -= 1;
+  if (track.distracting || blockedTracks.includes(track.title)) score -= 4;
+
+  return score;
+}
+
+function buildQueueInsights(queueList, blockedTracks, focusDuration, autoDownload) {
+  const totalSeconds = queueList.reduce((sum, track) => sum + parseTrackLength(track.length), 0);
+  const totalMinutes = totalSeconds / 60;
+  const offlineCount = queueList.filter((track) => track.offline).length;
+  const blockedCount = queueList.filter((track) => track.distracting || blockedTracks.includes(track.title)).length;
+  const reviewCount = queueList.filter((track) => track.focusSafe === false).length;
+  const coverageGap = Math.max(0, focusDuration - Math.round(totalMinutes));
+  const readiness = clamp(
+    Math.round(
+      100 - blockedCount * 18 - reviewCount * 8 - coverageGap * 1.4 - (autoDownload ? 0 : Math.max(6, (queueList.length - offlineCount) * 3))
+    ),
+    32,
+    99
+  );
+  const issues = [];
+
+  if (coverageGap > 0) issues.push(`durasi kurang ${coverageGap}m`);
+  if (blockedCount > 0) issues.push(`${blockedCount} lagu berisiko distraksi`);
+  if (queueList.length > 0 && offlineCount < Math.ceil(queueList.length * 0.6)) issues.push("cadangan offline tipis");
+
+  return {
+    totalMinutes: Math.max(0, Math.round(totalMinutes)),
+    offlineCount,
+    blockedCount,
+    reviewCount,
+    readiness,
+    issues,
+    note: issues.length > 0 ? `Prioritas: ${issues[0]}.` : "Queue sudah siap untuk sesi fokus berikutnya.",
+  };
+}
+
+function rankPlaylistsByFit(items, { activity, selectedContext, lyricPreference, focusDuration, autoDownload, playlistTracks, blockedTracks }) {
+  return items
+    .map((playlist) => {
+      let score = 48;
+      const reasons = [];
+      const blockedHitCount = (playlistTracks[playlist.id] ?? [])
+        .map((songId) => songCatalog.find((song) => song.id === songId))
+        .filter(Boolean)
+        .filter((song) => blockedTracks.includes(song.title)).length;
+
+      if (playlist.activity === activity) {
+        score += 22;
+        reasons.push(activity);
+      }
+      if (playlist.context === selectedContext) {
+        score += 18;
+        reasons.push(selectedContext);
+      }
+      if (playlist.lyric === lyricPreference) {
+        score += 12;
+        reasons.push(lyricPreference.toLowerCase());
+      }
+      if (Math.abs(playlist.duration - focusDuration) <= 15) {
+        score += 10;
+        reasons.push("durasi pas");
+      }
+      if (playlist.offline && autoDownload) {
+        score += 8;
+        reasons.push("offline ready");
+      }
+      if (blockedHitCount > 0) {
+        score -= blockedHitCount * 12;
+        reasons.push(`${blockedHitCount} blocked`);
+      }
+
+      return {
+        ...playlist,
+        match: clamp(score, 45, 99),
+        trackCount: playlistTracks[playlist.id]?.length ?? 0,
+        insight: reasons.slice(0, 2).join(" • ") || "siap untuk fokus",
+      };
+    })
+    .sort((left, right) => right.match - left.match || left.duration - right.duration);
 }
 
 function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) {
@@ -88,12 +277,10 @@ function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) {
   const [volumeLevel, setVolumeLevel] = useState(62);
   const [queueList, setQueueList] = useState(initialQueueTracks);
   const [blockedTracks, setBlockedTracks] = useState(["City Lyrics Loop", "Paper Deadline"]);
-  const [filters, setFilters] = useState({
-    playlist: true,
-    lyrics: true,
-    noise: true,
-    offline: true,
-  });
+  const [filters, setFilters] = useState(initialFilters);
+  const [focusStats, setFocusStats] = useState(initialFocusStats);
+  const [sessionState, setSessionState] = useState(() => createSessionState(45));
+  const [toast, setToast] = useState(null);
 
   const setScreen = useCallback(
     (nextScreen) => {
@@ -105,12 +292,158 @@ function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) {
     [router]
   );
 
+  const showToast = useCallback((title, description) => {
+    setToast({
+      id: Date.now(),
+      title,
+      description,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+
+    const timeout = window.setTimeout(() => {
+      setToast((current) => (current?.id === toast.id ? null : current));
+    }, TOAST_TIMEOUT_MS);
+
+    return () => window.clearTimeout(timeout);
+  }, [toast]);
+
   useEffect(() => {
     const routeScreen = getScreenFromPathname(pathname);
     if (routeScreen && routeScreen !== screen) {
       setScreenState(routeScreen);
     }
   }, [pathname, screen]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const raw = window.localStorage.getItem(PROTOTYPE_STORAGE_KEY);
+      if (!raw) return;
+
+      const parsed = JSON.parse(raw);
+      const nextFocusDuration = durationOptions.includes(parsed.focusDuration) ? parsed.focusDuration : 45;
+      const availableContexts = new Set(contextOptions.map((item) => item.id));
+      const availableActivities = new Set(Object.keys(focusActivities));
+      const availablePlaylists = new Set(playlists.map((item) => item.id));
+      const availableSongs = new Set(songCatalog.map((item) => item.id));
+
+      if (availableActivities.has(parsed.activity)) setActivity(parsed.activity);
+      if (Array.isArray(parsed.selectedActivities)) {
+        const nextActivities = parsed.selectedActivities.filter((item) => availableActivities.has(item));
+        if (nextActivities.length > 0) setSelectedActivities(nextActivities);
+      }
+      if (availableContexts.has(parsed.selectedContext)) setSelectedContext(parsed.selectedContext);
+      if (lyricOptions.includes(parsed.lyricPreference)) setLyricPreference(parsed.lyricPreference);
+      setFocusDuration(nextFocusDuration);
+      if (typeof parsed.autoDownload === "boolean") setAutoDownload(parsed.autoDownload);
+      if (availablePlaylists.has(parsed.selectedPlaylistId)) setSelectedPlaylistId(parsed.selectedPlaylistId);
+      if (availablePlaylists.has(parsed.selectedPlaylistDetailId)) setSelectedPlaylistDetailId(parsed.selectedPlaylistDetailId);
+      if (typeof parsed.musicSearchOpen === "boolean") setMusicSearchOpen(parsed.musicSearchOpen);
+      if (typeof parsed.searchQuery === "string") setSearchQuery(parsed.searchQuery);
+      if (["playlist", "song", "artist"].includes(parsed.musicSearchMode)) setMusicSearchMode(parsed.musicSearchMode);
+      if (availableSongs.has(parsed.selectedSongId)) setSelectedSongId(parsed.selectedSongId);
+      if (availablePlaylists.has(parsed.selectedTargetPlaylistId)) setSelectedTargetPlaylistId(parsed.selectedTargetPlaylistId);
+      if (parsed.playlistTracks && typeof parsed.playlistTracks === "object") {
+        setPlaylistTracks({ ...initialPlaylistTracks, ...parsed.playlistTracks });
+      }
+      if (typeof parsed.isMusicPlaying === "boolean") setIsMusicPlaying(parsed.isMusicPlaying);
+      if (typeof parsed.isSessionPaused === "boolean") setIsSessionPaused(parsed.isSessionPaused);
+      if (typeof parsed.volumeLevel === "number") setVolumeLevel(clamp(parsed.volumeLevel, 20, 90));
+      if (Array.isArray(parsed.queueList)) setQueueList(parsed.queueList);
+      if (Array.isArray(parsed.blockedTracks)) setBlockedTracks(parsed.blockedTracks);
+      if (parsed.filters && typeof parsed.filters === "object") setFilters({ ...initialFilters, ...parsed.filters });
+      if (parsed.focusStats) setFocusStats(normalizeFocusStats(parsed.focusStats));
+      if (parsed.sessionState) setSessionState(normalizeSessionState(parsed.sessionState, nextFocusDuration));
+    } catch (error) {
+      console.error("Failed to restore FocusTunes prototype state", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const payload = {
+      activity,
+      selectedActivities,
+      selectedContext,
+      lyricPreference,
+      focusDuration,
+      autoDownload,
+      selectedPlaylistId,
+      selectedPlaylistDetailId,
+      musicSearchOpen,
+      searchQuery,
+      musicSearchMode,
+      selectedSongId,
+      selectedTargetPlaylistId,
+      playlistTracks,
+      isMusicPlaying,
+      isSessionPaused,
+      volumeLevel,
+      queueList,
+      blockedTracks,
+      filters,
+      focusStats,
+      sessionState,
+    };
+
+    window.localStorage.setItem(PROTOTYPE_STORAGE_KEY, JSON.stringify(payload));
+  }, [
+    activity,
+    selectedActivities,
+    selectedContext,
+    lyricPreference,
+    focusDuration,
+    autoDownload,
+    selectedPlaylistId,
+    selectedPlaylistDetailId,
+    musicSearchOpen,
+    searchQuery,
+    musicSearchMode,
+    selectedSongId,
+    selectedTargetPlaylistId,
+    playlistTracks,
+    isMusicPlaying,
+    isSessionPaused,
+    volumeLevel,
+    queueList,
+    blockedTracks,
+    filters,
+    focusStats,
+    sessionState,
+  ]);
+
+  useEffect(() => {
+    setSessionState((previous) => (previous.hasStarted ? previous : createSessionState(focusDuration, { setupSeconds: previous.setupSeconds })));
+  }, [focusDuration]);
+
+  useEffect(() => {
+    if (!sessionState.hasStarted || isSessionPaused || !sessionState.isActive) return;
+
+    const interval = window.setInterval(() => {
+      setSessionState((previous) => {
+        if (!previous.hasStarted || !previous.isActive) return previous;
+        if (previous.remainingSeconds <= 1) {
+          return {
+            ...previous,
+            remainingSeconds: 0,
+            isActive: false,
+          };
+        }
+
+        return {
+          ...previous,
+          remainingSeconds: previous.remainingSeconds - 1,
+        };
+      });
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [sessionState.hasStarted, sessionState.isActive, isSessionPaused]);
 
   const selectedPlaylist = useMemo(
     () => playlists.find((item) => item.id === selectedPlaylistId) ?? playlists[0],
@@ -126,6 +459,226 @@ function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) {
     () => songCatalog.find((item) => item.id === selectedSongId) ?? songCatalog[0],
     [selectedSongId]
   );
+
+  const currentTrack = useMemo(() => queueList[0] ?? initialQueueTracks[0], [queueList]);
+
+  const queueInsights = useMemo(
+    () => buildQueueInsights(queueList, blockedTracks, focusDuration, autoDownload),
+    [queueList, blockedTracks, focusDuration, autoDownload]
+  );
+
+  const recommendedPlaylists = useMemo(
+    () =>
+      rankPlaylistsByFit(playlists, {
+        activity,
+        selectedContext,
+        lyricPreference,
+        focusDuration,
+        autoDownload,
+        playlistTracks,
+        blockedTracks,
+      }),
+    [activity, selectedContext, lyricPreference, focusDuration, autoDownload, playlistTracks, blockedTracks]
+  );
+
+  const sessionProgress = useMemo(() => {
+    if (!sessionState.hasStarted) return 0;
+    return clamp((sessionState.totalSeconds - sessionState.remainingSeconds) / Math.max(1, sessionState.totalSeconds), 0, 1);
+  }, [sessionState.hasStarted, sessionState.remainingSeconds, sessionState.totalSeconds]);
+
+  const sessionSummaryData = useMemo(
+    () => ({
+      completionRate: clamp(Math.round(sessionProgress * 100), 0, 100),
+      remainingLabel: formatClock(sessionState.remainingSeconds),
+      elapsedLabel: formatClock(sessionState.totalSeconds - sessionState.remainingSeconds),
+    }),
+    [sessionProgress, sessionState.remainingSeconds, sessionState.totalSeconds]
+  );
+
+  const finishSession = useCallback(
+    (reason = "manual") => {
+      if (!sessionState.hasStarted) {
+        showToast("Session belum dimulai", "Mulai sesi dulu agar metrik bisa dihitung.");
+        return;
+      }
+
+      const elapsedSeconds = Math.max(60, sessionState.totalSeconds - sessionState.remainingSeconds);
+      const durationMinutes = Math.max(1, Math.round(elapsedSeconds / 60));
+      const offlineRate = Math.round((queueInsights.offlineCount / Math.max(1, queueList.length)) * 100);
+      const blockedSuggestion =
+        queueList.find((track) => track.distracting || blockedTracks.includes(track.title) || track.focusSafe === false)?.title ??
+        sessionSummary.blockedSuggestion;
+      const completionRate = clamp(Math.round((elapsedSeconds / Math.max(1, sessionState.totalSeconds)) * 100), 4, 100);
+      const nextSummary = {
+        duration: formatDurationLabel(durationMinutes),
+        durationMinutes,
+        skipCount: sessionState.skipCount,
+        blockedSuggestion,
+        savedSetup: selectedPlaylist.title,
+        completionRate,
+        setupSeconds: sessionState.setupSeconds,
+      };
+
+      setFocusStats((previous) => {
+        const nextCompletedSessions = previous.completedSessions + 1;
+        const nextOfflineSuccessRate = Math.round(
+          (previous.offlineSuccessRate * previous.completedSessions + offlineRate) / nextCompletedSessions
+        );
+        const nextDistractionDelta = clamp(
+          Math.round((previous.distractionDelta * previous.completedSessions + (sessionState.skipCount <= 1 ? -36 : -18 + sessionState.skipCount * 3)) / nextCompletedSessions),
+          -60,
+          24
+        );
+
+        return {
+          ...previous,
+          completedSessions: nextCompletedSessions,
+          streakDays: previous.streakDays + (completionRate >= 70 ? 1 : 0),
+          totalFocusMinutes: previous.totalFocusMinutes + durationMinutes,
+          offlineSuccessRate: nextOfflineSuccessRate,
+          distractionDelta: nextDistractionDelta,
+          activityMinutes: {
+            ...previous.activityMinutes,
+            [activity]: (previous.activityMinutes[activity] ?? 0) + durationMinutes,
+          },
+          lastSessionSummary: nextSummary,
+        };
+      });
+
+      setIsSessionPaused(false);
+      setSessionState(createSessionState(focusDuration));
+      setScreen("review");
+      showToast(reason === "timer" ? "Sesi selesai otomatis" : "Sesi tersimpan", `${nextSummary.duration} masuk ke statistik.`);
+    },
+    [
+      sessionState,
+      queueInsights.offlineCount,
+      queueList,
+      blockedTracks,
+      selectedPlaylist.title,
+      activity,
+      focusDuration,
+      setScreen,
+      showToast,
+    ]
+  );
+
+  useEffect(() => {
+    if (sessionState.hasStarted && !sessionState.isActive && sessionState.remainingSeconds === 0) {
+      finishSession("timer");
+    }
+  }, [sessionState.hasStarted, sessionState.isActive, sessionState.remainingSeconds, finishSession]);
+
+  const startSession = useCallback(
+    (options = {}) => {
+      if (queueList.length === 0) {
+        showToast("Queue kosong", "Tambahkan lagu atau playlist dulu.");
+        setScreen("queue");
+        return;
+      }
+
+      const nextActivity = options.activityLabel ?? activity;
+      const nextDuration = options.duration ?? focusDuration;
+      const setupSeconds = clamp(22 - selectedActivities.length * 2 - (autoDownload ? 4 : 0) - (filters.lyrics ? 2 : 0), 7, 22);
+
+      setIsSessionPaused(false);
+      setSessionState(
+        createSessionState(nextDuration, {
+          hasStarted: true,
+          isActive: true,
+          setupSeconds,
+          initialQueueSize: queueList.length,
+        })
+      );
+      setScreen(options.screen ?? "session");
+      showToast("Sesi dimulai", `${nextActivity} mode • ${nextDuration} menit`);
+    },
+    [queueList.length, showToast, setScreen, activity, focusDuration, selectedActivities.length, autoDownload, filters.lyrics]
+  );
+
+  const toggleSessionPause = useCallback(() => {
+    if (!sessionState.hasStarted) {
+      startSession();
+      return;
+    }
+
+    setIsSessionPaused((previous) => {
+      const next = !previous;
+      showToast(next ? "Session dipause" : "Session dilanjutkan", next ? "Timer berhenti sementara." : "Focus flow aktif kembali.");
+      return next;
+    });
+  }, [sessionState.hasStarted, startSession, showToast]);
+
+  const savePreset = useCallback(
+    (nextScreen = "home") => {
+      setFocusStats((previous) => ({
+        ...previous,
+        savedPresets: previous.savedPresets + 1,
+        lastSessionSummary: {
+          ...previous.lastSessionSummary,
+          savedSetup: selectedPlaylist.title,
+        },
+      }));
+      showToast("Preset disimpan", `${selectedPlaylist.title} siap dipakai lagi.`);
+      if (nextScreen) setScreen(nextScreen);
+    },
+    [selectedPlaylist.title, setScreen, showToast]
+  );
+
+  const smartQueue = useCallback(() => {
+    setQueueList((previous) => {
+      const seen = new Set();
+      const deduplicated = previous.filter((track) => {
+        const key = track.songId ?? `${track.title}-${track.artist}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      return deduplicated
+        .map((track, index) => ({ track, index }))
+        .sort((left, right) => scoreTrackForFocus(right.track, blockedTracks) - scoreTrackForFocus(left.track, blockedTracks) || left.index - right.index)
+        .map(({ track }) =>
+          blockedTracks.includes(track.title)
+            ? {
+                ...track,
+                distracting: true,
+              }
+            : track
+        );
+    });
+    showToast("Queue dirapikan", "Lagu fokus-safe dan offline diprioritaskan.");
+  }, [blockedTracks, showToast]);
+
+  const rotateQueue = useCallback(
+    (direction = "next") => {
+      setQueueList((previous) => {
+        if (previous.length <= 1) return previous;
+
+        if (direction === "previous") {
+          const lastTrack = previous[previous.length - 1];
+          return [lastTrack, ...previous.slice(0, -1)];
+        }
+
+        const [firstTrack, ...rest] = previous;
+        return [...rest, firstTrack];
+      });
+    },
+    []
+  );
+
+  const skipCurrentTrack = useCallback(() => {
+    rotateQueue("next");
+    setSessionState((previous) =>
+      previous.hasStarted
+        ? {
+            ...previous,
+            skipCount: previous.skipCount + 1,
+          }
+        : previous
+    );
+    showToast("Track dilewati", "Queue menyesuaikan mood fokus.");
+  }, [rotateQueue, showToast]);
 
   const value = useMemo(
     () => ({
@@ -174,6 +727,22 @@ function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) {
       setBlockedTracks,
       filters,
       setFilters,
+      focusStats,
+      sessionState,
+      sessionProgress,
+      sessionSummaryData,
+      currentTrack,
+      queueInsights,
+      recommendedPlaylists,
+      toast,
+      showToast,
+      startSession,
+      toggleSessionPause,
+      finishSession,
+      savePreset,
+      smartQueue,
+      rotateQueue,
+      skipCurrentTrack,
     }),
     [
       screen,
@@ -201,6 +770,22 @@ function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) {
       queueList,
       blockedTracks,
       filters,
+      focusStats,
+      sessionState,
+      sessionProgress,
+      sessionSummaryData,
+      currentTrack,
+      queueInsights,
+      recommendedPlaylists,
+      toast,
+      showToast,
+      startSession,
+      toggleSessionPause,
+      finishSession,
+      savePreset,
+      smartQueue,
+      rotateQueue,
+      skipCurrentTrack,
     ]
   );
 
@@ -358,7 +943,30 @@ function PhoneFrame({ children }) {
     <div className="relative h-[844px] w-[390px] overflow-hidden rounded-[42px] border-[10px] border-[#0b1930] bg-white shadow-[0_30px_80px_rgba(8,43,92,0.24)]">
       <div className="pointer-events-none absolute left-1/2 top-0 z-30 h-7 w-40 -translate-x-1/2 rounded-b-[18px] bg-[#0b1930]" />
       {children}
+      <PrototypeToast />
     </div>
+  );
+}
+
+function PrototypeToast() {
+  const { toast } = usePrototype();
+
+  return (
+    <AnimatePresence>
+      {toast ? (
+        <motion.div
+          key={toast.id}
+          initial={{ opacity: 0, y: 18, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 12, scale: 0.98 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className="pointer-events-none absolute left-4 right-4 top-16 z-40 rounded-[24px] border border-[#CFE6EC] bg-white/96 px-4 py-3 shadow-[0_14px_32px_rgba(8,43,92,0.18)] backdrop-blur"
+        >
+          <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#1C9AA0]">{toast.title}</div>
+          <div className="mt-1 text-sm font-medium text-[#082B5C]">{toast.description}</div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   );
 }
 
@@ -598,13 +1206,18 @@ function ActionCard({ icon: Icon, title, subtitle, action, onClick }) {
   );
 }
 
-function PlaylistCard({ playlist, selected = false, compact = false, onClick, onUse, onQueue, onOffline }) {
+function PlaylistCard({ playlist, selected = false, compact = false, match, insight, onClick, onUse, onQueue, onOffline }) {
   return (
     <div className={cx("rounded-[22px] bg-white p-2 shadow-sm ring-1", selected ? "ring-[#1C9AA0]" : "ring-slate-100")}>
       <button onClick={onClick} className="w-full text-left">
         <div className={cx("relative overflow-hidden rounded-[16px] bg-gradient-to-br", playlist.accent, compact ? "h-20" : "h-28")}>
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(8,43,92,0.15),transparent_35%),radial-gradient(circle_at_80%_30%,rgba(28,154,160,0.18),transparent_35%)]" />
           <Music4 className="absolute bottom-3 left-3 h-5 w-5 text-[#082B5C]" />
+          {typeof match === "number" ? (
+            <div className="absolute left-3 top-3 rounded-full bg-[#082B5C]/85 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white">
+              {match}% fit
+            </div>
+          ) : null}
           {playlist.offline ? (
             <div className="absolute right-3 top-3 rounded-full bg-white/80 px-2 py-1 text-[10px] font-bold text-[#082B5C]">OFF</div>
           ) : null}
@@ -619,6 +1232,7 @@ function PlaylistCard({ playlist, selected = false, compact = false, onClick, on
               </span>
             ))}
           </div>
+          {insight ? <div className="mt-2 text-[11px] font-medium text-slate-500">{insight}</div> : null}
         </div>
       </button>
       {!compact ? (
@@ -798,7 +1412,6 @@ function Field({ label, value, secure = false }) {
 
 function OnboardingScreen() {
   const {
-    setScreen,
     selectedActivities,
     setSelectedActivities,
     selectedContext,
@@ -810,6 +1423,7 @@ function OnboardingScreen() {
     autoDownload,
     setAutoDownload,
     setActivity,
+    savePreset,
   } = usePrototype();
 
   function toggleActivity(item) {
@@ -911,7 +1525,7 @@ function OnboardingScreen() {
             onClick={() => setAutoDownload((prev) => !prev)}
           />
 
-          <PrimaryAction onClick={() => setScreen("home")}>Simpan dan lanjut</PrimaryAction>
+          <PrimaryAction onClick={() => savePreset("home")}>Simpan dan lanjut</PrimaryAction>
         </div>
       </div>
     </div>
@@ -926,12 +1540,18 @@ function HomeScreen() {
     selectedContext,
     setSelectedContext,
     selectedPlaylist,
+    setSelectedPlaylistDetailId,
     focusDuration,
+    lyricPreference,
     autoDownload,
     setAutoDownload,
+    recommendedPlaylists,
+    queueInsights,
+    startSession,
   } = usePrototype();
   const selected = focusActivities[activity];
-  const recommended = playlists.filter((item) => item.activity === activity || item.context === selectedContext).slice(0, 3);
+  const recommended = recommendedPlaylists.slice(0, 3);
+  const topRecommendation = recommended[0] ?? selectedPlaylist;
 
   return (
     <AppPage>
@@ -947,7 +1567,7 @@ function HomeScreen() {
           </div>
           <div className="rounded-2xl bg-[#ECF7F8] px-3 py-2 text-right">
             <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#1C9AA0]">Ready</div>
-            <div className="text-sm font-black text-[#082B5C]">{autoDownload ? "Offline" : "Online"}</div>
+            <div className="text-sm font-black text-[#082B5C]">{queueInsights.readiness}%</div>
           </div>
         </div>
 
@@ -976,16 +1596,42 @@ function HomeScreen() {
           <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
             <MiniStat label="Playlist" value={selectedPlaylist.title.split(" ")[0]} />
             <MiniStat label="Durasi" value={`${focusDuration}m`} />
-            <MiniStat label="Lirik" value="Low" />
+            <MiniStat label="Lirik" value={lyricPreference === "Tanpa lirik" ? "Low" : lyricPreference === "Bebas" ? "Flex" : "Mix"} />
           </div>
 
           <div className="mt-5 grid grid-cols-2 gap-3">
             <button onClick={() => setScreen("preset")} className="rounded-2xl bg-white/10 px-4 py-3 text-sm font-semibold text-white ring-1 ring-white/15">
               Edit Preset
             </button>
-            <button onClick={() => setScreen("session")} className="rounded-2xl bg-white px-4 py-3 text-sm font-black text-[#082B5C]">
+            <button onClick={() => startSession()} className="rounded-2xl bg-white px-4 py-3 text-sm font-black text-[#082B5C]">
               Mulai Sesi
             </button>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-[26px] border border-[#CFE6EC] bg-white p-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#ECF7F8] text-[#1C9AA0]">
+              <Edit3 className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-[#082B5C]">Focus briefing</div>
+              <div className="mt-1 text-xs leading-5 text-slate-500">
+                Queue health {queueInsights.readiness}% dengan rekomendasi teratas {topRecommendation.title}.
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="rounded-2xl bg-[#F7FAFC] px-3 py-3 ring-1 ring-slate-100">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Next best fit</div>
+              <div className="mt-1 truncate text-sm font-black text-[#082B5C]">{topRecommendation.title}</div>
+              <div className="mt-1 text-xs text-slate-500">{topRecommendation.match}% fit • {topRecommendation.insight}</div>
+            </div>
+            <div className="rounded-2xl bg-[#F7FAFC] px-3 py-3 ring-1 ring-slate-100">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Queue status</div>
+              <div className="mt-1 text-sm font-black text-[#082B5C]">{queueInsights.totalMinutes}m coverage</div>
+              <div className="mt-1 text-xs text-slate-500">{queueInsights.note}</div>
+            </div>
           </div>
         </div>
 
@@ -1009,11 +1655,11 @@ function HomeScreen() {
         </div>
 
         <div className="mt-6 grid grid-cols-2 gap-3">
-          <ActionCard icon={Settings2} title="Preset siap" subtitle={selectedPlaylist.title} action="Edit" onClick={() => setScreen("preset")} />
+          <ActionCard icon={Settings2} title="Preset siap" subtitle={`${selectedPlaylist.title} • ${lyricPreference}`} action="Edit" onClick={() => setScreen("preset")} />
           <ActionCard
             icon={Download}
             title="Offline cache"
-            subtitle={autoDownload ? "Download otomatis aktif" : "Ketuk untuk aktifkan"}
+            subtitle={autoDownload ? `${queueInsights.offlineCount} lagu siap offline` : "Ketuk untuk aktifkan"}
             action={autoDownload ? "Ready" : "Off"}
             onClick={() => setAutoDownload((prev) => !prev)}
           />
@@ -1023,7 +1669,17 @@ function HomeScreen() {
           <SectionTitle title="Rekomendasi untuk konteks ini" action="Music" onAction={() => setScreen("music")} />
           <div className="mt-3 grid grid-cols-3 gap-3">
             {recommended.map((item) => (
-              <PlaylistCard key={item.id} playlist={item} compact onClick={() => setScreen("music")} />
+              <PlaylistCard
+                key={item.id}
+                playlist={item}
+                compact
+                match={item.match}
+                insight={item.insight}
+                onClick={() => {
+                  setSelectedPlaylistDetailId(item.id);
+                  setScreen("music");
+                }}
+              />
             ))}
           </div>
         </div>
@@ -1043,7 +1699,6 @@ function MiniStat({ label, value }) {
 
 function PresetScreen() {
   const {
-    setScreen,
     activity,
     selectedPlaylist,
     selectedPlaylistId,
@@ -1058,6 +1713,8 @@ function PresetScreen() {
     setVolumeLevel,
     filters,
     setFilters,
+    savePreset,
+    startSession,
   } = usePrototype();
 
   const playlistChoices = playlists.filter((item) => item.activity === activity || item.offline).slice(0, 4);
@@ -1171,10 +1828,10 @@ function PresetScreen() {
       </div>
 
       <div className="absolute bottom-[104px] left-5 right-5 z-20 grid grid-cols-2 gap-3">
-        <PrimaryAction variant="secondary" icon={Save} onClick={() => setScreen("home")}>
+        <PrimaryAction variant="secondary" icon={Save} onClick={() => savePreset("home")}>
           Simpan
         </PrimaryAction>
-        <PrimaryAction icon={Play} onClick={() => setScreen("session")}>
+        <PrimaryAction icon={Play} onClick={() => startSession()}>
           Mulai
         </PrimaryAction>
       </div>
@@ -1201,24 +1858,29 @@ function MusicScreen() {
     playlistTracks,
     setPlaylistTracks,
     setActivity,
-    setScreen,
     setQueueList,
     setAutoDownload,
+    recommendedPlaylists,
+    startSession,
+    showToast,
   } = usePrototype();
   const hasQuery = searchQuery.trim().length > 0;
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const visiblePlaylists = hasQuery
-    ? playlists.filter((item) => `${item.title} ${item.subtitle} ${item.activity} ${item.context}`.toLowerCase().includes(searchQuery.toLowerCase()))
-    : playlists;
+    ? recommendedPlaylists.filter((item) =>
+        `${item.title} ${item.subtitle} ${item.activity} ${item.context} ${item.tags.join(" ")}`.toLowerCase().includes(normalizedQuery)
+      )
+    : recommendedPlaylists;
   const visibleSongs = hasQuery
     ? songCatalog.filter((item) =>
         `${item.title} ${item.artist} ${item.album} ${item.mood} ${item.activityFit}`.toLowerCase().includes(normalizedQuery)
       )
-    : songCatalog;
+    : [...songCatalog].sort((left, right) => Number(right.focusSafe) - Number(left.focusSafe));
   const artistGroups = visibleSongs.reduce((groups, song) => {
     groups[song.artist] = groups[song.artist] ? [...groups[song.artist], song] : [song];
     return groups;
   }, {});
+  const detailedPlaylist = visiblePlaylists.find((item) => item.id === selectedPlaylistDetail.id) ?? recommendedPlaylists.find((item) => item.id === selectedPlaylistDetail.id) ?? selectedPlaylistDetail;
   const searchCopy = {
     playlist: {
       title: "Cari playlist fokus",
@@ -1241,7 +1903,7 @@ function MusicScreen() {
     setSelectedPlaylistId(item.id);
     setSelectedPlaylistDetailId(item.id);
     setActivity(item.activity);
-    setScreen("session");
+    startSession({ activityLabel: item.activity });
   }
 
   function addPlaylistTrack(item) {
@@ -1253,9 +1915,11 @@ function MusicScreen() {
         artist: "FocusTunes Mix",
         length: "4:00",
         offline: item.offline,
+        focusSafe: item.lyric === "Tanpa lirik",
       },
     ]);
     setSelectedPlaylistDetailId(item.id);
+    showToast("Masuk ke queue", `${item.title} ditambahkan ke sesi fokus.`);
   }
 
   function addSongToQueue(song) {
@@ -1273,9 +1937,11 @@ function MusicScreen() {
       },
     ]);
     setSelectedSongId(song.id);
+    showToast("Lagu ditambahkan", `${song.title} masuk ke smart queue.`);
   }
 
   function addSongToPlaylist(song, playlistId = selectedTargetPlaylistId) {
+    const alreadyAdded = (playlistTracks[playlistId] ?? []).includes(song.id);
     setPlaylistTracks((prev) => {
       const current = prev[playlistId] ?? [];
       if (current.includes(song.id)) return prev;
@@ -1284,7 +1950,9 @@ function MusicScreen() {
     setSelectedSongId(song.id);
     if (playlistId === selectedPlaylistId) {
       addSongToQueue(song);
+      return;
     }
+    showToast(alreadyAdded ? "Sudah ada di playlist" : "Masuk ke playlist", `${song.title} ${alreadyAdded ? "tetap tersimpan" : "ditambahkan"} ke playlist target.`);
   }
 
   return (
@@ -1351,22 +2019,34 @@ function MusicScreen() {
         <div className="mt-5 rounded-[28px] bg-[linear-gradient(135deg,#082B5C_0%,#0C4B72_60%,#1C9AA0_100%)] p-5 text-white shadow-lg">
           {musicSearchMode === "playlist" ? (
             <>
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-100">Playlist detail</div>
-              <div className="mt-2 text-2xl font-black tracking-tight">{selectedPlaylistDetail.title}</div>
-              <p className="mt-2 text-sm leading-6 text-cyan-50/90">{selectedPlaylistDetail.subtitle}</p>
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-100">Playlist detail</div>
+                <div className="rounded-full bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white">
+                  {detailedPlaylist.match}% fit
+                </div>
+              </div>
+              <div className="mt-2 text-2xl font-black tracking-tight">{detailedPlaylist.title}</div>
+              <p className="mt-2 text-sm leading-6 text-cyan-50/90">{detailedPlaylist.subtitle}</p>
+              <p className="mt-2 text-xs font-medium uppercase tracking-[0.14em] text-cyan-100/85">{detailedPlaylist.insight}</p>
               <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
-                <MiniStat label="Durasi" value={`${selectedPlaylistDetail.duration}m`} />
-                <MiniStat label="Lirik" value={selectedPlaylistDetail.lyric === "Tanpa lirik" ? "Low" : "Mix"} />
-                <MiniStat label="Lagu" value={`${playlistTracks[selectedPlaylistDetail.id]?.length ?? 0}`} />
+                <MiniStat label="Durasi" value={`${detailedPlaylist.duration}m`} />
+                <MiniStat label="Lirik" value={detailedPlaylist.lyric === "Tanpa lirik" ? "Low" : "Mix"} />
+                <MiniStat label="Lagu" value={`${playlistTracks[detailedPlaylist.id]?.length ?? 0}`} />
               </div>
               <div className="mt-4 grid grid-cols-3 gap-2">
-                <button onClick={() => usePlaylist(selectedPlaylistDetail)} className="rounded-2xl bg-white px-3 py-3 text-xs font-black text-[#082B5C]">
+                <button onClick={() => usePlaylist(detailedPlaylist)} className="rounded-2xl bg-white px-3 py-3 text-xs font-black text-[#082B5C]">
                   Pakai
                 </button>
-                <button onClick={() => addPlaylistTrack(selectedPlaylistDetail)} className="rounded-2xl bg-white/10 px-3 py-3 text-xs font-bold text-white ring-1 ring-white/15">
+                <button onClick={() => addPlaylistTrack(detailedPlaylist)} className="rounded-2xl bg-white/10 px-3 py-3 text-xs font-bold text-white ring-1 ring-white/15">
                   Queue
                 </button>
-                <button onClick={() => setAutoDownload(true)} className="rounded-2xl bg-white/10 px-3 py-3 text-xs font-bold text-white ring-1 ring-white/15">
+                <button
+                  onClick={() => {
+                    setAutoDownload(true);
+                    showToast("Offline aktif", `${detailedPlaylist.title} disiapkan untuk fallback.`);
+                  }}
+                  className="rounded-2xl bg-white/10 px-3 py-3 text-xs font-bold text-white ring-1 ring-white/15"
+                >
                   Offline
                 </button>
               </div>
@@ -1392,11 +2072,16 @@ function MusicScreen() {
                   <PlaylistCard
                     key={item.id}
                     playlist={item}
+                    match={item.match}
+                    insight={item.insight}
                     selected={item.id === selectedPlaylistDetail.id}
                     onClick={() => setSelectedPlaylistDetailId(item.id)}
                     onUse={() => usePlaylist(item)}
                     onQueue={() => addPlaylistTrack(item)}
-                    onOffline={() => setAutoDownload(true)}
+                    onOffline={() => {
+                      setAutoDownload(true);
+                      showToast("Offline aktif", `${item.title} akan diprioritaskan saat koneksi lemah.`);
+                    }}
                   />
                 ))}
               </div>
@@ -1628,8 +2313,25 @@ function SongBadge({ children, tone = "neutral" }) {
 }
 
 function PlayerScreen() {
-  const { setScreen, isMusicPlaying, setIsMusicPlaying, queueList, selectedPlaylist } = usePrototype();
-  const current = queueList[0] ?? initialQueueTracks[0];
+  const {
+    setScreen,
+    isMusicPlaying,
+    setIsMusicPlaying,
+    queueList,
+    selectedPlaylist,
+    currentTrack,
+    sessionProgress,
+    sessionState,
+    rotateQueue,
+    skipCurrentTrack,
+  } = usePrototype();
+  const current = currentTrack ?? queueList[0] ?? initialQueueTracks[0];
+  const trackProgress = clamp(sessionState.hasStarted ? sessionProgress : 0.42, 0.05, 0.97);
+  const trackLengthSeconds = parseTrackLength(current.length);
+  const elapsedTrackSeconds = Math.round(trackLengthSeconds * trackProgress);
+  const remainingTrackSeconds = Math.max(0, trackLengthSeconds - elapsedTrackSeconds);
+  const lyricHeadline = current.focusSafe === false ? "Energi sedang tinggi" : "Focus-safe track";
+  const lyricBody = current.focusSafe === false ? "Cocok untuk break singkat atau sesi ride." : "Aman untuk writing, study, dan coding mode.";
 
   return (
     <div className="h-full overflow-hidden bg-[#19191D] text-white">
@@ -1668,11 +2370,11 @@ function PlayerScreen() {
 
           <div className="mt-5">
             <div className="h-1.5 overflow-hidden rounded-full bg-white/30">
-              <div className="h-full w-[42%] rounded-full bg-white" />
+              <div className="h-full rounded-full bg-white" style={{ width: `${trackProgress * 100}%` }} />
             </div>
             <div className="mt-2 flex items-center justify-between text-[11px] text-white/55">
-              <span>1:38</span>
-              <span>-2:27</span>
+              <span>{formatClock(elapsedTrackSeconds)}</span>
+              <span>-{formatClock(remainingTrackSeconds)}</span>
             </div>
           </div>
 
@@ -1680,7 +2382,7 @@ function PlayerScreen() {
             <button className="text-white/75">
               <Shuffle className="h-5 w-5" />
             </button>
-            <button className="text-white">
+            <button onClick={() => rotateQueue("previous")} className="text-white">
               <SkipBack className="h-7 w-7" />
             </button>
             <button
@@ -1689,7 +2391,7 @@ function PlayerScreen() {
             >
               {isMusicPlaying ? <Pause className="h-7 w-7" /> : <Play className="ml-1 h-7 w-7" />}
             </button>
-            <button className="text-white">
+            <button onClick={skipCurrentTrack} className="text-white">
               <SkipForward className="h-7 w-7" />
             </button>
             <button className="text-emerald-400">
@@ -1716,9 +2418,9 @@ function PlayerScreen() {
             <button className="rounded-full bg-black/25 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em]">More</button>
           </div>
           <div className="mt-5 space-y-3 text-xl font-black leading-7 text-white/90">
-            <p>Instrumental track</p>
-            <p className="text-white/55">No vocal lyrics detected</p>
-            <p className="text-white/55">Safe for writing and coding mode</p>
+            <p>{lyricHeadline}</p>
+            <p className="text-white/55">{current.lyric ? `Lirik: ${current.lyric}` : "No vocal lyrics detected"}</p>
+            <p className="text-white/55">{lyricBody}</p>
           </div>
         </div>
 
@@ -1760,10 +2462,17 @@ function SessionScreen() {
     setFilters,
     setScreen,
     isSessionPaused,
-    setIsSessionPaused,
     queueList,
+    queueInsights,
+    sessionState,
+    sessionProgress,
+    sessionSummaryData,
+    startSession,
+    toggleSessionPause,
+    finishSession,
   } = usePrototype();
-  const progress = 0.73;
+  const hasStarted = sessionState.hasStarted;
+  const progress = hasStarted ? sessionProgress : queueInsights.readiness / 100;
   const ring = useMemo(
     () => ({
       background: `conic-gradient(${isSessionPaused ? "#94A3B8" : brand.teal} ${progress * 360}deg, rgba(8,43,92,0.10) 0deg)`,
@@ -1777,6 +2486,12 @@ function SessionScreen() {
     { key: "noise", label: "Noise cancellation", icon: Headphones, note: `aktif untuk konteks ${selectedContext}` },
     { key: "offline", label: "Offline fallback", icon: WifiOff, note: selectedPlaylist.offline ? "playlist aman offline" : "butuh download" },
   ];
+  const sessionLabel = !hasStarted ? "Session ready" : isSessionPaused ? "Session paused" : "Session active";
+  const sessionCopy = !hasStarted
+    ? "Preset, queue, dan filter sudah siap. Mulai sesi untuk menyalakan countdown fokus."
+    : isSessionPaused
+      ? "Timer berhenti sementara. Queue dan filter tetap tersimpan."
+      : `${selectedPlaylist.title} berjalan untuk konteks ${selectedContext}.`;
 
   return (
     <AppPage showMiniPlayer={false}>
@@ -1786,34 +2501,30 @@ function SessionScreen() {
         <div className="mt-5 rounded-[30px] border border-cyan-100 bg-white p-5 shadow-sm">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                {isSessionPaused ? "Session paused" : "Session active"}
-              </div>
+              <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">{sessionLabel}</div>
               <div className="mt-2 text-2xl font-black tracking-tight text-[#082B5C]">{activity} Mode</div>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
-                {isSessionPaused
-                  ? "Timer berhenti sementara. Queue dan filter tetap tersimpan."
-                  : `${selectedPlaylist.title} berjalan untuk konteks ${selectedContext}.`}
-              </p>
+              <p className="mt-2 text-sm leading-6 text-slate-500">{sessionCopy}</p>
             </div>
             <div className="grid h-24 w-24 shrink-0 place-items-center rounded-full" style={ring}>
               <div className="grid h-20 w-20 place-items-center rounded-full bg-white shadow-inner">
                 <div className="text-center">
-                  <div className="text-xl font-black tracking-tight text-[#082B5C]">{isSessionPaused ? "Pause" : "44:05"}</div>
-                  <div className="text-[10px] text-slate-500">{focusDuration}:00</div>
+                  <div className="text-xl font-black tracking-tight text-[#082B5C]">
+                    {!hasStarted ? `${queueInsights.readiness}%` : isSessionPaused ? "Pause" : sessionSummaryData.remainingLabel}
+                  </div>
+                  <div className="text-[10px] text-slate-500">{hasStarted ? `${focusDuration}:00` : "queue ready"}</div>
                 </div>
               </div>
             </div>
           </div>
           <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-            <SessionStat label="Sisa" value={`${queueList.length} lagu`} />
-            <SessionStat label="Skip" value="0" />
-            <SessionStat label="Setup" value="14 detik" />
+            <SessionStat label={hasStarted ? "Sisa" : "Queue"} value={hasStarted ? `${queueList.length} lagu` : `${queueInsights.totalMinutes}m`} />
+            <SessionStat label={hasStarted ? "Skip" : "Health"} value={hasStarted ? `${sessionState.skipCount}` : `${queueInsights.readiness}%`} />
+            <SessionStat label="Setup" value={`${sessionState.setupSeconds} detik`} />
           </div>
         </div>
 
         <div className="mt-5">
-          <SectionTitle title="Now Playing" action="Tap to view" />
+          <SectionTitle title="Now Playing" action={hasStarted ? "Tap to view" : "Preview"} />
           <div className="mt-3">
             <NowPlayingBar />
           </div>
@@ -1842,7 +2553,7 @@ function SessionScreen() {
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-sm font-semibold text-[#082B5C]">Queue aman untuk fokus</div>
-              <div className="mt-1 text-xs leading-5 text-slate-500">Mood-aware shuffle hanya mengambil lagu yang jarang di-skip.</div>
+              <div className="mt-1 text-xs leading-5 text-slate-500">{queueInsights.note}</div>
             </div>
           </div>
           <div className="mt-4 space-y-2">
@@ -1861,19 +2572,16 @@ function SessionScreen() {
 
       <div className="absolute bottom-[106px] left-5 right-5 z-20 flex gap-3">
         <button
-          onClick={() => setIsSessionPaused((prev) => !prev)}
+          onClick={() => (hasStarted ? toggleSessionPause() : startSession())}
           className="flex-1 rounded-2xl bg-[#2F6DF6] px-4 py-4 text-sm font-semibold text-white shadow-lg"
         >
-          {isSessionPaused ? "Resume Session" : "Pause Session"}
+          {!hasStarted ? "Mulai Session" : isSessionPaused ? "Resume Session" : "Pause Session"}
         </button>
         <button
-          onClick={() => {
-            setIsSessionPaused(false);
-            setScreen("review");
-          }}
+          onClick={() => (hasStarted ? finishSession() : setScreen("preset"))}
           className="rounded-2xl border border-[#BFD1EA] bg-white px-6 py-4 text-sm font-semibold text-[#082B5C]"
         >
-          Selesai
+          {hasStarted ? "Selesai" : "Edit Preset"}
         </button>
       </div>
     </AppPage>
@@ -1915,9 +2623,9 @@ function QueuePreviewRow({ index, title, length }) {
 }
 
 function QueueScreen() {
-  const { activity, queueList, setQueueList, blockedTracks, setBlockedTracks } = usePrototype();
-  const totalMinutes = queueList.length * 4;
-  const offlineCount = queueList.filter((item) => item.offline).length;
+  const { activity, queueList, setQueueList, blockedTracks, setBlockedTracks, queueInsights, smartQueue, showToast } = usePrototype();
+  const totalMinutes = queueInsights.totalMinutes;
+  const offlineCount = queueInsights.offlineCount;
 
   function moveTrack(index, direction) {
     setQueueList((prev) => {
@@ -1931,11 +2639,13 @@ function QueueScreen() {
 
   function removeTrack(id) {
     setQueueList((prev) => prev.filter((item) => item.id !== id));
+    showToast("Track dihapus", "Queue diperbarui sesuai preferensi fokus.");
   }
 
   function blockTrack(track) {
     setBlockedTracks((prev) => (prev.includes(track.title) ? prev : [...prev, track.title]));
     setQueueList((prev) => prev.map((item) => (item.id === track.id ? { ...item, distracting: true } : item)));
+    showToast("Track diblokir", `${track.title} tidak akan diprioritaskan lagi.`);
   }
 
   return (
@@ -1948,9 +2658,17 @@ function QueueScreen() {
             <div className="text-[28px] font-black tracking-tight text-[#082B5C]">Smart Queue</div>
             <div className="text-sm text-slate-500">Preset untuk {activity.toLowerCase()} session</div>
           </div>
-          <button className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-[#082B5C] shadow-sm ring-1 ring-slate-100">
-            <Settings2 className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={smartQueue}
+              className="rounded-2xl bg-[#082B5C] px-3 py-2 text-[11px] font-bold uppercase tracking-[0.16em] text-white"
+            >
+              Auto fix
+            </button>
+            <button className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-[#082B5C] shadow-sm ring-1 ring-slate-100">
+              <Settings2 className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         <div className="mt-5 rounded-[28px] bg-[linear-gradient(135deg,#082B5C_0%,#0F4F77_65%,#1C9AA0_100%)] p-5 text-white">
@@ -1959,7 +2677,9 @@ function QueueScreen() {
               <div className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">Queue Preset</div>
               <div className="mt-2 text-2xl font-black">{queueList.length} lagu siap</div>
               <div className="mt-2 text-sm leading-6 text-cyan-50/90">
-                Estimasi {totalMinutes} menit - {offlineCount}/{queueList.length} lagu offline - {blockedTracks.length} lagu diblokir
+                {queueList.length === 0
+                  ? "Tambahkan lagu dari Music agar smart queue bisa dihitung."
+                  : `Estimasi ${totalMinutes} menit - ${offlineCount}/${queueList.length} lagu offline - ${blockedTracks.length} lagu diblokir`}
               </div>
             </div>
             <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white/10">
@@ -1968,18 +2688,30 @@ function QueueScreen() {
           </div>
         </div>
 
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <StatBlock label="Queue Health" value={`${queueInsights.readiness}%`} icon={ShieldCheck} />
+          <StatBlock label="Need Review" value={`${queueInsights.reviewCount} lagu`} icon={Ban} />
+        </div>
+
         <div className="mt-5 space-y-3">
-          {queueList.map((track, idx) => (
-            <QueueTrackRow
-              key={track.id}
-              track={track}
-              index={idx}
-              onUp={() => moveTrack(idx, -1)}
-              onDown={() => moveTrack(idx, 1)}
-              onRemove={() => removeTrack(track.id)}
-              onBlock={() => blockTrack(track)}
-            />
-          ))}
+          {queueList.length === 0 ? (
+            <div className="rounded-[24px] border border-dashed border-slate-200 bg-white px-4 py-6 text-center shadow-sm">
+              <div className="text-sm font-semibold text-[#082B5C]">Queue masih kosong</div>
+              <div className="mt-1 text-xs leading-5 text-slate-500">Tambah lagu dari tab Music atau pakai auto-fix setelah ada beberapa track.</div>
+            </div>
+          ) : (
+            queueList.map((track, idx) => (
+              <QueueTrackRow
+                key={track.id}
+                track={track}
+                index={idx}
+                onUp={() => moveTrack(idx, -1)}
+                onDown={() => moveTrack(idx, 1)}
+                onRemove={() => removeTrack(track.id)}
+                onBlock={() => blockTrack(track)}
+              />
+            ))
+          )}
         </div>
 
         <div className="mt-5 rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-100">
@@ -1998,8 +2730,9 @@ function QueueScreen() {
 }
 
 function ReviewScreen() {
-  const { setScreen, blockedTracks, setBlockedTracks } = usePrototype();
-  const alreadyBlocked = blockedTracks.includes(sessionSummary.blockedSuggestion);
+  const { setScreen, blockedTracks, setBlockedTracks, focusStats } = usePrototype();
+  const review = focusStats.lastSessionSummary;
+  const alreadyBlocked = blockedTracks.includes(review.blockedSuggestion);
 
   return (
     <div className="h-full overflow-hidden bg-[#FAFCFE]">
@@ -2009,19 +2742,31 @@ function ReviewScreen() {
           <div className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-100">Session review</div>
           <div className="mt-3 text-3xl font-black tracking-tight">Sesi selesai</div>
           <p className="mt-2 text-sm leading-6 text-cyan-50/90">
-            Anda menyelesaikan {sessionSummary.duration}. FocusTunes menemukan beberapa sinyal untuk memperbaiki preset berikutnya.
+            Anda menyelesaikan {review.duration}. FocusTunes menemukan beberapa sinyal untuk memperbaiki preset berikutnya.
           </p>
           <div className="mt-5 grid grid-cols-3 gap-2 text-center">
-            <MiniStat label="Durasi" value="44m" />
-            <MiniStat label="Skip" value={`${sessionSummary.skipCount}`} />
-            <MiniStat label="Saved" value="1" />
+            <MiniStat label="Durasi" value={`${review.durationMinutes}m`} />
+            <MiniStat label="Skip" value={`${review.skipCount}`} />
+            <MiniStat label="Saved" value={`${focusStats.savedPresets}`} />
           </div>
         </div>
 
         <div className="mt-5 space-y-3">
-          <ActionCard icon={Ban} title="Lagu sering diskip" subtitle={sessionSummary.blockedSuggestion} action={alreadyBlocked ? "Blocked" : "Review"} onClick={() => setBlockedTracks((prev) => (prev.includes(sessionSummary.blockedSuggestion) ? prev : [...prev, sessionSummary.blockedSuggestion]))} />
-          <ActionCard icon={Save} title="Preset tersimpan" subtitle={sessionSummary.savedSetup} action="Saved" onClick={() => setScreen("preset")} />
-          <ActionCard icon={ShieldCheck} title="Strict focus membaik" subtitle="Skip rate turun menjadi 1.2 lagu per sesi" action="-31%" onClick={() => setScreen("stats")} />
+          <ActionCard
+            icon={Ban}
+            title="Lagu paling perlu direview"
+            subtitle={review.blockedSuggestion}
+            action={alreadyBlocked ? "Blocked" : "Review"}
+            onClick={() => setBlockedTracks((prev) => (prev.includes(review.blockedSuggestion) ? prev : [...prev, review.blockedSuggestion]))}
+          />
+          <ActionCard icon={Save} title="Preset yang dipakai" subtitle={review.savedSetup} action="Saved" onClick={() => setScreen("preset")} />
+          <ActionCard
+            icon={ShieldCheck}
+            title="Completion rate"
+            subtitle={`Setup ${review.setupSeconds} detik • ${review.skipCount} skip pada sesi ini`}
+            action={`${review.completionRate}%`}
+            onClick={() => setScreen("stats")}
+          />
         </div>
 
         <div className="mt-6 grid grid-cols-2 gap-3">
@@ -2038,11 +2783,29 @@ function ReviewScreen() {
 }
 
 function StatsScreen() {
-  const { blockedTracks, selectedContext, activity, autoDownload } = usePrototype();
-  const activityStats = [
-    { label: "Coding", value: "11.4h", width: 86 },
-    { label: "Writing", value: "7.2h", width: 62 },
-    { label: "Study", value: "5.6h", width: 48 },
+  const { blockedTracks, selectedContext, activity, autoDownload, focusStats, setScreen } = usePrototype();
+  const totalActivityMinutes = Object.values(focusStats.activityMinutes).reduce((sum, value) => sum + value, 0);
+  const activityStats = Object.entries(focusStats.activityMinutes)
+    .filter(([, value]) => value > 0)
+    .map(([label, value]) => ({
+      label,
+      value: `${(value / 60).toFixed(1)}h`,
+      width: Math.round((value / Math.max(1, totalActivityMinutes)) * 100),
+    }))
+    .sort((left, right) => right.width - left.width);
+  const review = focusStats.lastSessionSummary;
+  const statsInsights = [
+    {
+      title: "Last session",
+      value: `${review.duration} • ${review.completionRate}%`,
+      note: `${review.skipCount} skip, setup ${review.setupSeconds} detik.`,
+    },
+    {
+      title: "Preset terakhir",
+      value: review.savedSetup,
+      note: `Track review: ${review.blockedSuggestion}`,
+    },
+    ...focusInsights,
   ];
 
   return (
@@ -2059,10 +2822,10 @@ function StatsScreen() {
         </div>
 
         <div className="mt-5 grid grid-cols-2 gap-3">
-          <StatBlock label="Focus Streak" value="8 hari" icon={CheckCircle2} />
-          <StatBlock label="Total Session" value="26 sesi" icon={Clock3} />
-          <StatBlock label="Distraksi Turun" value="-31%" icon={ShieldCheck} />
-          <StatBlock label="Offline Success" value={autoDownload ? "97%" : "82%"} icon={WifiOff} />
+          <StatBlock label="Focus Streak" value={`${focusStats.streakDays} hari`} icon={CheckCircle2} />
+          <StatBlock label="Total Session" value={`${focusStats.completedSessions} sesi`} icon={Clock3} />
+          <StatBlock label="Distraksi Turun" value={`${focusStats.distractionDelta}%`} icon={ShieldCheck} />
+          <StatBlock label="Offline Success" value={`${autoDownload ? focusStats.offlineSuccessRate : Math.max(72, focusStats.offlineSuccessRate - 11)}%`} icon={WifiOff} />
         </div>
 
         <div className="mt-5 rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-slate-100">
@@ -2087,8 +2850,8 @@ function StatsScreen() {
           </div>
 
           <div className="mt-5 grid grid-cols-3 gap-2">
-            <StatsMiniCard label="Total" value="24.2h" />
-            <StatsMiniCard label="Best" value="20.00" />
+            <StatsMiniCard label="Total" value={`${(focusStats.totalFocusMinutes / 60).toFixed(1)}h`} />
+            <StatsMiniCard label="Best" value={focusInsights[0].value} />
             <StatsMiniCard label="Context" value={selectedContext} />
           </div>
         </div>
@@ -2111,10 +2874,10 @@ function StatsScreen() {
         </div>
 
         <div className="mt-5 space-y-3">
-          {focusInsights.map((item) => (
+          {statsInsights.map((item) => (
             <InsightCard key={item.title} title={item.title} value={item.value} note={item.note} />
           ))}
-          <ActionCard icon={Ban} title="Blocked tracks" subtitle={`${blockedTracks.length} lagu tidak muncul di ${activity} Mode`} action="Review" onClick={() => {}} />
+          <ActionCard icon={Ban} title="Blocked tracks" subtitle={`${blockedTracks.length} lagu tidak muncul di ${activity} Mode`} action="Review" onClick={() => setScreen("queue")} />
         </div>
       </div>
     </AppPage>
