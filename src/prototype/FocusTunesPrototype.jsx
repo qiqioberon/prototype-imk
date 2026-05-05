@@ -1,18 +1,18 @@
-import React, { createContext, useContext, useMemo, useState } from "react";
+"use client";
+
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowDown,
   ArrowUp,
   Ban,
-  Car,
   ChartNoAxesColumn,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   Clock3,
-  CloudRain,
-  Coffee,
   Download,
   Edit3,
   Filter,
@@ -21,7 +21,6 @@ import {
   House,
   ListOrdered,
   Minus,
-  Moon,
   MoreHorizontal,
   Music4,
   Pause,
@@ -39,352 +38,37 @@ import {
   Sparkles,
   Trash2,
   UserCircle2,
-  Users,
   Volume2,
   WifiOff,
   X,
 } from "lucide-react";
 
-import homeRef from "../Home.png";
-import loginRef from "../Login.png";
-import logoRef from "../Logo.png";
-import splashRef from "../Splash.png";
-
-const brand = {
-  navy: "#082B5C",
-  teal: "#1C9AA0",
-  blue: "#2F6DF6",
-  mist: "#F7FAFC",
-};
-
-const focusActivities = {
-  Coding: {
-    label: "Coding",
-    title: "Mulai coding tanpa setup ulang.",
-    description: "Preset coding menjaga queue instrumental, filter lirik, volume, dan offline fallback tetap siap.",
-    session: 45,
-    tags: ["Instrumental", "Strict focus", "Offline ready"],
-  },
-  Writing: {
-    label: "Writing",
-    title: "Masuk mode menulis lebih cepat.",
-    description: "Musik rendah lirik dan tempo stabil membantu menjaga alur menulis tanpa banyak skip.",
-    session: 52,
-    tags: ["Tanpa lirik", "Ambient", "Deep focus"],
-  },
-  Study: {
-    label: "Study",
-    title: "Belajar dengan ritme yang konsisten.",
-    description: "Lo-fi ringan, timer fokus, dan queue aman untuk sesi baca atau review materi.",
-    session: 60,
-    tags: ["Lo-fi", "Pomodoro", "Review ready"],
-  },
-  Ride: {
-    label: "Ride",
-    title: "Perjalanan tetap lancar tanpa buffering.",
-    description: "Preset perjalanan memakai cache offline dan volume adaptif agar musik tidak putus.",
-    session: 38,
-    tags: ["Energetic", "Downloaded", "Adaptive volume"],
-  },
-};
-
-const contextOptions = [
-  { id: "Sepi", label: "Sepi", description: "volume rendah", icon: Moon },
-  { id: "Ramai", label: "Ramai", description: "lebih tebal", icon: Users },
-  { id: "Kafe", label: "Kafe", description: "noise control", icon: Coffee },
-  { id: "Perjalanan", label: "Perjalanan", description: "offline", icon: Car },
-  { id: "Hujan", label: "Hujan", description: "mellow", icon: CloudRain },
-];
-
-const lyricOptions = ["Tanpa lirik", "Bahasa asing", "Bebas"];
-const durationOptions = [25, 45, 60, 90];
-
-const playlists = [
-  {
-    id: "coding-flow",
-    title: "Coding Deep Flow",
-    subtitle: "Instrumental stabil untuk kerja teknis",
-    activity: "Coding",
-    context: "Kafe",
-    duration: 48,
-    lyric: "Tanpa lirik",
-    offline: true,
-    accent: "from-sky-100 to-cyan-50",
-    tags: ["No lyrics", "Focus pool", "Downloaded"],
-  },
-  {
-    id: "writing-words",
-    title: "Writing Without Words",
-    subtitle: "Ambient ringan untuk menulis panjang",
-    activity: "Writing",
-    context: "Sepi",
-    duration: 52,
-    lyric: "Tanpa lirik",
-    offline: true,
-    accent: "from-violet-100 to-fuchsia-50",
-    tags: ["Ambient", "Low skip", "Calm"],
-  },
-  {
-    id: "study-reset",
-    title: "Study Reset",
-    subtitle: "Lo-fi untuk baca, rangkum, dan review",
-    activity: "Study",
-    context: "Sepi",
-    duration: 60,
-    lyric: "Bahasa asing",
-    offline: false,
-    accent: "from-amber-100 to-yellow-50",
-    tags: ["Pomodoro", "Lo-fi", "Review"],
-  },
-  {
-    id: "ride-energy",
-    title: "Ride Energy",
-    subtitle: "Beat ringan untuk perjalanan dan aktivitas repetitif",
-    activity: "Ride",
-    context: "Perjalanan",
-    duration: 38,
-    lyric: "Bebas",
-    offline: true,
-    accent: "from-indigo-100 to-violet-50",
-    tags: ["Energetic", "Offline", "Adaptive"],
-  },
-  {
-    id: "rainy-cafe",
-    title: "Rainy Cafe Focus",
-    subtitle: "Suasana hujan, kafe, dan noise yang lebih lembut",
-    activity: "Writing",
-    context: "Hujan",
-    duration: 44,
-    lyric: "Tanpa lirik",
-    offline: false,
-    accent: "from-emerald-100 to-teal-50",
-    tags: ["Rain", "Cafe", "Soft"],
-  },
-  {
-    id: "assignment-sprint",
-    title: "Assignment Sprint",
-    subtitle: "Queue pendek untuk deadline tugas",
-    activity: "Study",
-    context: "Ramai",
-    duration: 35,
-    lyric: "Bahasa asing",
-    offline: true,
-    accent: "from-rose-100 to-orange-50",
-    tags: ["Sprint", "Strict", "Ready"],
-  },
-];
-
-const songCatalog = [
-  {
-    id: "ts-cruel-summer",
-    title: "Cruel Summer",
-    artist: "Taylor Swift",
-    album: "Lover",
-    length: "2:58",
-    lyric: "EN",
-    mood: "Energetic pop",
-    activityFit: "Ride",
-    focusSafe: false,
-    offline: true,
-  },
-  {
-    id: "ts-anti-hero",
-    title: "Anti-Hero",
-    artist: "Taylor Swift",
-    album: "Midnights",
-    length: "3:20",
-    lyric: "EN",
-    mood: "Reflective pop",
-    activityFit: "Writing",
-    focusSafe: false,
-    offline: false,
-  },
-  {
-    id: "ts-blank-space",
-    title: "Blank Space",
-    artist: "Taylor Swift",
-    album: "1989",
-    length: "3:51",
-    lyric: "EN",
-    mood: "Pop focus break",
-    activityFit: "Ride",
-    focusSafe: false,
-    offline: true,
-  },
-  {
-    id: "ts-cardigan",
-    title: "cardigan",
-    artist: "Taylor Swift",
-    album: "folklore",
-    length: "3:59",
-    lyric: "EN",
-    mood: "Soft writing",
-    activityFit: "Writing",
-    focusSafe: true,
-    offline: false,
-  },
-  {
-    id: "od-night-changes",
-    title: "Night Changes",
-    artist: "One Direction",
-    album: "FOUR",
-    length: "3:46",
-    lyric: "EN",
-    mood: "Mellow pop",
-    activityFit: "Writing",
-    focusSafe: true,
-    offline: true,
-  },
-  {
-    id: "od-story-of-my-life",
-    title: "Story of My Life",
-    artist: "One Direction",
-    album: "Midnight Memories",
-    length: "4:05",
-    lyric: "EN",
-    mood: "Acoustic pop",
-    activityFit: "Study",
-    focusSafe: true,
-    offline: true,
-  },
-  {
-    id: "od-little-things",
-    title: "Little Things",
-    artist: "One Direction",
-    album: "Take Me Home",
-    length: "3:39",
-    lyric: "EN",
-    mood: "Soft acoustic",
-    activityFit: "Study",
-    focusSafe: true,
-    offline: false,
-  },
-  {
-    id: "od-what-makes-you-beautiful",
-    title: "What Makes You Beautiful",
-    artist: "One Direction",
-    album: "Up All Night",
-    length: "3:19",
-    lyric: "EN",
-    mood: "High energy",
-    activityFit: "Ride",
-    focusSafe: false,
-    offline: true,
-  },
-  {
-    id: "wk-blinding-lights",
-    title: "Blinding Lights",
-    artist: "The Weeknd",
-    album: "After Hours",
-    length: "3:20",
-    lyric: "EN",
-    mood: "Synth drive",
-    activityFit: "Ride",
-    focusSafe: false,
-    offline: true,
-  },
-  {
-    id: "cp-yellow",
-    title: "Yellow",
-    artist: "Coldplay",
-    album: "Parachutes",
-    length: "4:26",
-    lyric: "EN",
-    mood: "Warm calm",
-    activityFit: "Writing",
-    focusSafe: true,
-    offline: false,
-  },
-  {
-    id: "hs-as-it-was",
-    title: "As It Was",
-    artist: "Harry Styles",
-    album: "Harry's House",
-    length: "2:47",
-    lyric: "EN",
-    mood: "Light pop",
-    activityFit: "Ride",
-    focusSafe: false,
-    offline: true,
-  },
-  {
-    id: "ep-photograph",
-    title: "Photograph",
-    artist: "Ed Sheeran",
-    album: "x",
-    length: "4:19",
-    lyric: "EN",
-    mood: "Soft vocal",
-    activityFit: "Writing",
-    focusSafe: true,
-    offline: false,
-  },
-];
-
-const initialPlaylistTracks = {
-  "coding-flow": ["ts-cardigan"],
-  "writing-words": ["od-night-changes", "cp-yellow"],
-  "study-reset": ["od-story-of-my-life", "od-little-things"],
-  "ride-energy": ["ts-cruel-summer", "od-what-makes-you-beautiful"],
-  "rainy-cafe": ["ts-cardigan", "cp-yellow"],
-  "assignment-sprint": ["od-story-of-my-life"],
-};
-
-const initialQueueTracks = [
-  { id: "ethereal", title: "Ethereal Ambience", artist: "AUS Lab", length: "4:05", offline: true },
-  { id: "signal", title: "Signal in Blue", artist: "Night Syntax", length: "3:48", offline: true },
-  { id: "compiler", title: "Quiet Compiler", artist: "BEATSPILL+", length: "4:16", offline: true },
-  { id: "glass", title: "Glass Keyboard", artist: "Mono Bloom", length: "3:55", offline: false },
-  { id: "snow", title: "Snow on Terminal", artist: "Frame State", length: "4:31", offline: true },
-  { id: "paper", title: "Paper Deadline", artist: "Noir Desk", length: "3:42", offline: false },
-];
-
-const sessionSummary = {
-  duration: "44 menit",
-  skipCount: 3,
-  blockedSuggestion: "Paper Deadline",
-  savedSetup: "Coding Deep Flow",
-};
-
-const focusInsights = [
-  { title: "Window terbaik", value: "20.00-22.00", note: "Sesi malam punya completion rate tertinggi." },
-  { title: "Mode paling stabil", value: "Coding Mode", note: "Skip turun saat filter lirik aktif." },
-  { title: "Konteks dominan", value: "Kafe", note: "Noise cancellation sering dipakai di konteks ini." },
-  { title: "Saran berikutnya", value: "Preset Writing 90m", note: "Cocok untuk sesi tugas panjang." },
-];
-
-const weeklyBars = [
-  { day: "Sen", hours: "2.1h", height: 42 },
-  { day: "Sel", hours: "3.5h", height: 70 },
-  { day: "Rab", hours: "2.9h", height: 58 },
-  { day: "Kam", hours: "4.2h", height: 84 },
-  { day: "Jum", hours: "3.3h", height: 66 },
-  { day: "Sab", hours: "4.5h", height: 90 },
-  { day: "Min", hours: "3.7h", height: 74 },
-];
-
-const screenLabels = {
-  splash: "Splash",
-  login: "Login",
-  onboarding: "Onboarding",
-  home: "Home",
-  music: "Music",
-  preset: "Preset",
-  session: "Session",
-  player: "Player",
-  queue: "Queue",
-  review: "Review",
-  stats: "Stats",
-};
-
+import {
+  brand,
+  contextOptions,
+  durationOptions,
+  focusActivities,
+  focusInsights,
+  initialPlaylistTracks,
+  initialQueueTracks,
+  lyricOptions,
+  playlists,
+  referenceImages,
+  sessionSummary,
+  songCatalog,
+  weeklyBars,
+} from "./data.js";
+import { DEFAULT_SCREEN, getScreenFromPathname, getScreenPath, isValidScreen, screenLabels } from "./routes.js";
 const PrototypeContext = createContext(null);
 
 function cx(...classes) {
   return classes.filter(Boolean).join(" ");
 }
 
-function PrototypeProvider({ children }) {
-  const [screen, setScreen] = useState("splash");
+function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [screen, setScreenState] = useState(initialScreen);
   const [activity, setActivity] = useState("Coding");
   const [selectedActivities, setSelectedActivities] = useState(["Coding", "Writing", "Study"]);
   const [selectedContext, setSelectedContext] = useState("Kafe");
@@ -410,6 +94,23 @@ function PrototypeProvider({ children }) {
     noise: true,
     offline: true,
   });
+
+  const setScreen = useCallback(
+    (nextScreen) => {
+      if (!isValidScreen(nextScreen)) return;
+
+      setScreenState(nextScreen);
+      router.push(getScreenPath(nextScreen));
+    },
+    [router]
+  );
+
+  useEffect(() => {
+    const routeScreen = getScreenFromPathname(pathname);
+    if (routeScreen && routeScreen !== screen) {
+      setScreenState(routeScreen);
+    }
+  }, [pathname, screen]);
 
   const selectedPlaylist = useMemo(
     () => playlists.find((item) => item.id === selectedPlaylistId) ?? playlists[0],
@@ -476,6 +177,7 @@ function PrototypeProvider({ children }) {
     }),
     [
       screen,
+      setScreen,
       activity,
       selectedActivities,
       selectedContext,
@@ -513,9 +215,9 @@ function usePrototype() {
   return context;
 }
 
-export default function App() {
+export default function FocusTunesPrototype({ initialScreen = DEFAULT_SCREEN }) {
   return (
-    <PrototypeProvider>
+    <PrototypeProvider initialScreen={initialScreen}>
       <AppShell>
         <PrototypeRouter />
       </AppShell>
@@ -628,10 +330,10 @@ function ScreenSwitcher() {
 
 function ReferenceStrip() {
   const refs = [
-    { label: "Splash", image: splashRef },
-    { label: "Login", image: loginRef },
-    { label: "Home", image: homeRef },
-    { label: "Logo", image: logoRef },
+    { label: "Splash", image: referenceImages.splash },
+    { label: "Login", image: referenceImages.login },
+    { label: "Home", image: referenceImages.home },
+    { label: "Logo", image: referenceImages.logo },
   ];
 
   return (
