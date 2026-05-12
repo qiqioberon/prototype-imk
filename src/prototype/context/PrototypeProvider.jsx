@@ -31,6 +31,27 @@ import {
 const PrototypeContext = createContext(null);
 const PROTOTYPE_STORAGE_KEY = "focustunes.prototype.state";
 const TOAST_TIMEOUT_MS = 2600;
+const REPEAT_MODES = ["off", "all", "one"];
+
+function getTrackPreferenceKey(track = {}) {
+  return track.songId ?? track.id ?? `${track.title ?? "track"}-${track.artist ?? "unknown"}`;
+}
+
+function shuffleTrackList(trackList = []) {
+  if (trackList.length <= 2) {
+    return trackList;
+  }
+
+  const [currentTrack, ...restTracks] = trackList;
+  const shuffledTracks = [...restTracks];
+
+  for (let index = shuffledTracks.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [shuffledTracks[index], shuffledTracks[randomIndex]] = [shuffledTracks[randomIndex], shuffledTracks[index]];
+  }
+
+  return [currentTrack, ...shuffledTracks];
+}
 
 export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) {
   const router = useRouter();
@@ -51,6 +72,9 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
   const [selectedTargetPlaylistId, setSelectedTargetPlaylistId] = useState("coding-flow");
   const [playlistTracks, setPlaylistTracks] = useState(initialPlaylistTracks);
   const [isMusicPlaying, setIsMusicPlaying] = useState(true);
+  const [likedTracks, setLikedTracks] = useState([]);
+  const [isShuffleEnabled, setIsShuffleEnabled] = useState(false);
+  const [repeatMode, setRepeatMode] = useState("off");
   const [isSessionPaused, setIsSessionPaused] = useState(false);
   const [volumeLevel, setVolumeLevel] = useState(62);
   const [queueList, setQueueList] = useState(initialQueueTracks);
@@ -155,6 +179,9 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
         setPlaylistTracks({ ...initialPlaylistTracks, ...parsed.playlistTracks });
       }
       if (typeof parsed.isMusicPlaying === "boolean") setIsMusicPlaying(parsed.isMusicPlaying);
+      if (Array.isArray(parsed.likedTracks)) setLikedTracks(parsed.likedTracks.filter((item) => typeof item === "string"));
+      if (typeof parsed.isShuffleEnabled === "boolean") setIsShuffleEnabled(parsed.isShuffleEnabled);
+      if (REPEAT_MODES.includes(parsed.repeatMode)) setRepeatMode(parsed.repeatMode);
       if (typeof parsed.isSessionPaused === "boolean") setIsSessionPaused(parsed.isSessionPaused);
       if (typeof parsed.volumeLevel === "number") setVolumeLevel(clamp(parsed.volumeLevel, 20, 90));
       if (Array.isArray(parsed.queueList)) setQueueList(parsed.queueList);
@@ -190,6 +217,9 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
       selectedTargetPlaylistId,
       playlistTracks,
       isMusicPlaying,
+      likedTracks,
+      isShuffleEnabled,
+      repeatMode,
       isSessionPaused,
       volumeLevel,
       queueList,
@@ -219,6 +249,9 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
     selectedTargetPlaylistId,
     playlistTracks,
     isMusicPlaying,
+    likedTracks,
+    isShuffleEnabled,
+    repeatMode,
     isSessionPaused,
     volumeLevel,
     queueList,
@@ -358,6 +391,7 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
   );
 
   const currentTrack = useMemo(() => queueList[0] ?? initialQueueTracks[0], [queueList]);
+  const isCurrentTrackLiked = useMemo(() => likedTracks.includes(getTrackPreferenceKey(currentTrack)), [likedTracks, currentTrack]);
 
   const queueInsightsRaw = useMemo(
     () => buildQueueInsights(queueList, blockedTracks, focusDuration, autoDownload),
@@ -615,7 +649,102 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
     []
   );
 
+  const toggleLikedTrack = useCallback(
+    (track = currentTrack) => {
+      if (!track) return;
+
+      const trackKey = getTrackPreferenceKey(track);
+      let isSaved = false;
+
+      setLikedTracks((previous) => {
+        if (previous.includes(trackKey)) {
+          return previous.filter((item) => item !== trackKey);
+        }
+
+        isSaved = true;
+        return [...previous, trackKey];
+      });
+
+      showToast(
+        isSaved ? "favoriteAddedTitle" : "favoriteRemovedTitle",
+        isSaved ? "favoriteAddedDescription" : "favoriteRemovedDescription",
+        { title: track.title }
+      );
+    },
+    [currentTrack, showToast]
+  );
+
+  const toggleShuffleMode = useCallback(() => {
+    let nextIsEnabled = false;
+
+    setIsShuffleEnabled((previous) => {
+      nextIsEnabled = !previous;
+      return nextIsEnabled;
+    });
+
+    if (nextIsEnabled) {
+      setQueueList((previous) => shuffleTrackList(previous));
+    }
+
+    showToast(
+      nextIsEnabled ? "shuffleEnabledTitle" : "shuffleDisabledTitle",
+      nextIsEnabled ? "shuffleEnabledDescription" : "shuffleDisabledDescription"
+    );
+  }, [showToast]);
+
+  const cycleRepeatMode = useCallback(() => {
+    let nextMode = "all";
+
+    setRepeatMode((previous) => {
+      nextMode = previous === "off" ? "all" : previous === "all" ? "one" : "off";
+      return nextMode;
+    });
+
+    const modeMessages = {
+      off: ["repeatOffTitle", "repeatOffDescription"],
+      all: ["repeatAllTitle", "repeatAllDescription"],
+      one: ["repeatOneTitle", "repeatOneDescription"],
+    };
+    const [title, description] = modeMessages[nextMode];
+
+    showToast(title, description);
+  }, [showToast]);
+
+  const shareCurrentTrack = useCallback(
+    async (track = currentTrack) => {
+      if (!track) return;
+
+      const shareSummary = t("toasts.shareSummary", { title: track.title, artist: track.artist });
+
+      try {
+        if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(shareSummary);
+          showToast("shareReadyTitle", "shareCopiedDescription");
+          return;
+        }
+      } catch (error) {
+        console.error("Failed to copy track summary", error);
+      }
+
+      showToast("shareReadyTitle", "shareFallbackDescription", { summary: shareSummary });
+    },
+    [currentTrack, showToast, t]
+  );
+
   const skipCurrentTrack = useCallback(() => {
+    if (repeatMode === "one") {
+      setSessionState((previous) =>
+        previous.hasStarted
+          ? {
+              ...previous,
+              skipCount: previous.skipCount + 1,
+            }
+          : previous
+      );
+      showToast("repeatOneSkipTitle", "repeatOneSkipDescription");
+      return;
+    }
+
     rotateQueue("next");
     setSessionState((previous) =>
       previous.hasStarted
@@ -626,7 +755,7 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
         : previous
     );
     showToast("trackSkippedTitle", "trackSkippedDescription");
-  }, [rotateQueue, showToast]);
+  }, [repeatMode, rotateQueue, showToast]);
 
   const value = useMemo(
     () => ({
@@ -669,6 +798,10 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
       setPlaylistTracks,
       isMusicPlaying,
       setIsMusicPlaying,
+      likedTracks,
+      isCurrentTrackLiked,
+      isShuffleEnabled,
+      repeatMode,
       isSessionPaused,
       setIsSessionPaused,
       volumeLevel,
@@ -706,6 +839,10 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
       savePreset,
       smartQueue,
       rotateQueue,
+      toggleLikedTrack,
+      toggleShuffleMode,
+      cycleRepeatMode,
+      shareCurrentTrack,
       skipCurrentTrack,
     }),
     [
@@ -733,6 +870,10 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
       selectedTargetPlaylistId,
       playlistTracks,
       isMusicPlaying,
+      likedTracks,
+      isCurrentTrackLiked,
+      isShuffleEnabled,
+      repeatMode,
       isSessionPaused,
       volumeLevel,
       queueList,
@@ -762,6 +903,10 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
       savePreset,
       smartQueue,
       rotateQueue,
+      toggleLikedTrack,
+      toggleShuffleMode,
+      cycleRepeatMode,
+      shareCurrentTrack,
       skipCurrentTrack,
     ]
   );

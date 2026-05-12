@@ -11,6 +11,9 @@ export function PlayerScreen() {
     isMusicPlaying,
     setIsMusicPlaying,
     isSessionPaused,
+    isCurrentTrackLiked,
+    isShuffleEnabled,
+    repeatMode,
     queueList,
     selectedPlaylist,
     currentTrack,
@@ -19,6 +22,10 @@ export function PlayerScreen() {
     sessionSummaryData,
     showTimerInPlayer,
     rotateQueue,
+    toggleLikedTrack,
+    toggleShuffleMode,
+    cycleRepeatMode,
+    shareCurrentTrack,
     skipCurrentTrack,
     t,
   } = usePrototype();
@@ -30,6 +37,7 @@ export function PlayerScreen() {
   const lyricHeadline = current.focusSafe === false ? t("player.highEnergy") : t("player.focusSafeTrack");
   const lyricBody = current.focusSafe === false ? t("player.highEnergyBody") : t("player.focusSafeBody");
   const timerStatus = !sessionState.hasStarted ? t("player.timerReady") : isSessionPaused ? t("player.timerPaused") : t("player.timerActive");
+  const repeatLabel = repeatMode === "all" ? t("player.repeatAll") : repeatMode === "one" ? t("player.repeatOne") : t("player.repeatOff");
 
   return (
     <div className="h-full overflow-hidden bg-[#19191D] text-white">
@@ -79,8 +87,12 @@ export function PlayerScreen() {
               <div className="truncate text-lg font-black">{current.title}</div>
               <div className="mt-1 truncate text-sm text-white/55">{current.artist}</div>
             </div>
-            <button className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-white/80">
-              <Heart className="h-5 w-5" />
+            <button
+              onClick={() => toggleLikedTrack(current)}
+              className={`grid h-10 w-10 shrink-0 place-items-center rounded-full transition ${isCurrentTrackLiked ? "bg-white text-[#B91C1C]" : "text-white/80"}`}
+              aria-label={isCurrentTrackLiked ? t("player.favoriteRemoveAria") : t("player.favoriteSaveAria")}
+            >
+              <Heart className="h-5 w-5" fill={isCurrentTrackLiked ? "currentColor" : "none"} />
             </button>
           </div>
 
@@ -95,7 +107,7 @@ export function PlayerScreen() {
           </div>
 
           <div className="mt-7 flex items-center justify-between">
-            <button className="text-white/75">
+            <button onClick={toggleShuffleMode} className={isShuffleEnabled ? "text-emerald-400" : "text-white/75"} aria-label={t("player.shuffleAria")}>
               <Shuffle className="h-5 w-5" />
             </button>
             <button onClick={() => rotateQueue("previous")} className="text-white">
@@ -111,9 +123,18 @@ export function PlayerScreen() {
             <button onClick={skipCurrentTrack} className="text-white">
               <SkipForward className="h-7 w-7" />
             </button>
-            <button className="text-emerald-400">
+            <button
+              onClick={cycleRepeatMode}
+              className={repeatMode === "off" ? "text-white/75" : "text-emerald-400"}
+              aria-label={t("player.repeatAria")}
+            >
               <Repeat2 className="h-5 w-5" />
             </button>
+          </div>
+
+          <div className="mt-3 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.14em]">
+            <span className={isShuffleEnabled ? "text-emerald-400" : "text-white/45"}>{isShuffleEnabled ? t("player.shuffleOn") : t("player.shuffleOff")}</span>
+            <span className="text-white/45">{repeatLabel}</span>
           </div>
 
           <div className="mt-7 flex items-center justify-between text-white/70">
@@ -121,8 +142,10 @@ export function PlayerScreen() {
               <Volume2 className="h-4 w-4" /> {isMusicPlaying ? t("player.musicPlaying") : t("player.musicPaused")}
             </div>
             <div className="flex items-center gap-5">
-              <Share2 className="h-5 w-5" />
-              <button onClick={() => setScreen("queue")}>
+              <button onClick={() => shareCurrentTrack(current)} aria-label={t("player.shareAria")}>
+                <Share2 className="h-5 w-5" />
+              </button>
+              <button onClick={() => setScreen("queue")} aria-label={t("player.queueAria")}>
                 <ListOrdered className="h-5 w-5" />
               </button>
             </div>

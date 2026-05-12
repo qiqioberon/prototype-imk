@@ -3,6 +3,7 @@ export const DEFAULT_SCREEN = "splash";
 export const screenLabels = {
   splash: "Splash",
   login: "Login",
+  register: "Register",
   onboarding: "Onboarding",
   home: "Home",
   music: "Music",
@@ -20,6 +21,7 @@ export const screenOrder = Object.keys(screenLabels);
 export const screenPaths = {
   splash: "/splash",
   login: "/login",
+  register: "/register",
   onboarding: "/onboarding",
   home: "/home",
   music: "/music",
