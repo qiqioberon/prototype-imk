@@ -30,39 +30,48 @@ export function MusicScreen() {
     recommendedPlaylists,
     startSession,
     showToast,
+    t,
+    getActivityInfo,
+    getLyricLabel,
+    getPlaylistInfo,
+    getSongInfo,
   } = usePrototype();
   const hasQuery = searchQuery.trim().length > 0;
   const normalizedQuery = searchQuery.trim().toLowerCase();
+  const localizedSongs = songCatalog.map((song) => getSongInfo(song));
   const visiblePlaylists = hasQuery
     ? recommendedPlaylists.filter((item) =>
         `${item.title} ${item.subtitle} ${item.activity} ${item.context} ${item.tags.join(" ")}`.toLowerCase().includes(normalizedQuery)
       )
     : recommendedPlaylists;
   const visibleSongs = hasQuery
-    ? songCatalog.filter((item) =>
+    ? localizedSongs.filter((item) =>
         `${item.title} ${item.artist} ${item.album} ${item.mood} ${item.activityFit}`.toLowerCase().includes(normalizedQuery)
       )
-    : [...songCatalog].sort((left, right) => Number(right.focusSafe) - Number(left.focusSafe));
+    : [...localizedSongs].sort((left, right) => Number(right.focusSafe) - Number(left.focusSafe));
   const artistGroups = visibleSongs.reduce((groups, song) => {
     groups[song.artist] = groups[song.artist] ? [...groups[song.artist], song] : [song];
     return groups;
   }, {});
-  const detailedPlaylist = visiblePlaylists.find((item) => item.id === selectedPlaylistDetail.id) ?? recommendedPlaylists.find((item) => item.id === selectedPlaylistDetail.id) ?? selectedPlaylistDetail;
+  const detailedPlaylist =
+    visiblePlaylists.find((item) => item.id === selectedPlaylistDetail.id) ??
+    recommendedPlaylists.find((item) => item.id === selectedPlaylistDetail.id) ??
+    selectedPlaylistDetail;
   const searchCopy = {
     playlist: {
-      title: "Cari playlist fokus",
-      helper: "Aktivitas, suasana, atau filter lirik",
-      placeholder: "Contoh: coding, hujan, offline",
+      title: t("musicScreen.searchPlaylistTitle"),
+      helper: t("musicScreen.searchPlaylistHelper"),
+      placeholder: t("musicScreen.searchPlaylistPlaceholder"),
     },
     song: {
-      title: "Cari lagu atau artist",
-      helper: "Tambah lagu ke playlist fokus tertentu",
-      placeholder: "Cari Taylor Swift, One Direction, atau judul lagu",
+      title: t("musicScreen.searchSongTitle"),
+      helper: t("musicScreen.searchSongHelper"),
+      placeholder: t("musicScreen.searchSongPlaceholder"),
     },
     artist: {
-      title: "Cari berdasarkan artist",
-      helper: "Lihat lagu yang cocok untuk playlist fokus",
-      placeholder: "Cari Taylor Swift, One Direction, Coldplay",
+      title: t("musicScreen.searchArtistTitle"),
+      helper: t("musicScreen.searchArtistHelper"),
+      placeholder: t("musicScreen.searchArtistPlaceholder"),
     },
   }[musicSearchMode];
 
@@ -86,7 +95,7 @@ export function MusicScreen() {
       },
     ]);
     setSelectedPlaylistDetailId(item.id);
-    showToast("Masuk ke queue", `${item.title} ditambahkan ke sesi fokus.`);
+    showToast("musicScreen.queueToastTitle", "musicScreen.queueToastDescription", { title: item.title });
   }
 
   function addSongToQueue(song) {
@@ -104,7 +113,7 @@ export function MusicScreen() {
       },
     ]);
     setSelectedSongId(song.id);
-    showToast("Lagu ditambahkan", `${song.title} masuk ke smart queue.`);
+    showToast("musicScreen.songQueueToastTitle", "musicScreen.songQueueToastDescription", { title: song.title });
   }
 
   function addSongToPlaylist(song, playlistId = selectedTargetPlaylistId) {
@@ -119,7 +128,10 @@ export function MusicScreen() {
       addSongToQueue(song);
       return;
     }
-    showToast(alreadyAdded ? "Sudah ada di playlist" : "Masuk ke playlist", `${song.title} ${alreadyAdded ? "tetap tersimpan" : "ditambahkan"} ke playlist target.`);
+    showToast(alreadyAdded ? "musicScreen.playlistToastExists" : "musicScreen.playlistToastTitle", "musicScreen.playlistToastDescription", {
+      title: song.title,
+      status: alreadyAdded ? t("musicScreen.playlistToastKept") : t("musicScreen.playlistToastAdded"),
+    });
   }
 
   return (
@@ -128,8 +140,8 @@ export function MusicScreen() {
         <TopTabs />
 
         <div className="mt-5">
-          <div className="text-[28px] font-black tracking-tight text-[#082B5C]">Music</div>
-          <div className="text-sm leading-6 text-slate-500">Cari, pilih, dan simpan playlist yang sesuai dengan mode fokusmu.</div>
+          <div className="text-[28px] font-black tracking-tight text-[#082B5C]">{t("musicScreen.title")}</div>
+          <div className="text-sm leading-6 text-slate-500">{t("musicScreen.description")}</div>
         </div>
 
         <div className="mt-4 rounded-[26px] border border-[#CFE6EC] bg-white p-4 shadow-sm">
@@ -143,13 +155,7 @@ export function MusicScreen() {
             </div>
           </div>
 
-          <SearchModeTabs
-            mode={musicSearchMode}
-            onChange={(mode) => {
-              setMusicSearchMode(mode);
-              setMusicSearchOpen(true);
-            }}
-          />
+          <SearchModeTabs mode={musicSearchMode} onChange={(mode) => { setMusicSearchMode(mode); setMusicSearchOpen(true); }} t={t} />
 
           {musicSearchOpen ? (
             <div className="mt-4">
@@ -161,13 +167,7 @@ export function MusicScreen() {
                   placeholder={searchCopy.placeholder}
                   className="w-full bg-transparent text-sm text-[#082B5C] outline-none placeholder:text-slate-400"
                 />
-                <button
-                  onClick={() => {
-                    setMusicSearchOpen(false);
-                    setSearchQuery("");
-                  }}
-                  className="text-slate-400"
-                >
+                <button onClick={() => { setMusicSearchOpen(false); setSearchQuery(""); }} className="text-slate-400">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -177,7 +177,7 @@ export function MusicScreen() {
               onClick={() => setMusicSearchOpen(true)}
               className="mt-4 flex w-full items-center justify-between rounded-2xl bg-[#082B5C] px-4 py-3 text-left text-white"
             >
-              <span className="text-sm font-semibold">Mulai cari</span>
+              <span className="text-sm font-semibold">{t("musicScreen.startSearch")}</span>
               <ChevronRight className="h-4 w-4" />
             </button>
           )}
@@ -187,34 +187,34 @@ export function MusicScreen() {
           {musicSearchMode === "playlist" ? (
             <>
               <div className="flex items-center justify-between gap-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-100">Playlist detail</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-100">{t("musicScreen.playlistDetail")}</div>
                 <div className="rounded-full bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white">
-                  {detailedPlaylist.match}% fit
+                  {t("musicScreen.fit", { value: detailedPlaylist.match })}
                 </div>
               </div>
               <div className="mt-2 text-2xl font-black tracking-tight">{detailedPlaylist.title}</div>
               <p className="mt-2 text-sm leading-6 text-cyan-50/90">{detailedPlaylist.subtitle}</p>
               <p className="mt-2 text-xs font-medium uppercase tracking-[0.14em] text-cyan-100/85">{detailedPlaylist.insight}</p>
               <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
-                <MiniStat label="Durasi" value={`${detailedPlaylist.duration}m`} />
-                <MiniStat label="Lirik" value={detailedPlaylist.lyric === "Tanpa lirik" ? "Low" : "Mix"} />
-                <MiniStat label="Lagu" value={`${playlistTracks[detailedPlaylist.id]?.length ?? 0}`} />
+                <MiniStat label={t("musicScreen.duration")} value={t("common.minutesShort", { value: detailedPlaylist.duration })} />
+                <MiniStat label={t("common.lyrics")} value={detailedPlaylist.lyric === "Tanpa lirik" ? t("common.low") : t("common.mix")} />
+                <MiniStat label={t("musicScreen.songCount")} value={`${playlistTracks[detailedPlaylist.id]?.length ?? 0}`} />
               </div>
               <div className="mt-4 grid grid-cols-3 gap-2">
                 <button onClick={() => usePlaylist(detailedPlaylist)} className="rounded-2xl bg-white px-3 py-3 text-xs font-black text-[#082B5C]">
-                  Pakai
+                  {t("musicScreen.use")}
                 </button>
                 <button onClick={() => addPlaylistTrack(detailedPlaylist)} className="rounded-2xl bg-white/10 px-3 py-3 text-xs font-bold text-white ring-1 ring-white/15">
-                  Queue
+                  {t("musicScreen.addQueue")}
                 </button>
                 <button
                   onClick={() => {
                     setAutoDownload(true);
-                    showToast("Offline aktif", `${detailedPlaylist.title} disiapkan untuk fallback.`);
+                    showToast("musicScreen.offlineToastTitle", "musicScreen.offlineToastDescription", { title: detailedPlaylist.title });
                   }}
                   className="rounded-2xl bg-white/10 px-3 py-3 text-xs font-bold text-white ring-1 ring-white/15"
                 >
-                  Offline
+                  {t("musicScreen.offline")}
                 </button>
               </div>
             </>
@@ -226,6 +226,10 @@ export function MusicScreen() {
               playlistTracks={playlistTracks}
               onAddToQueue={() => addSongToQueue(selectedSong)}
               onAddToPlaylist={() => addSongToPlaylist(selectedSong)}
+              t={t}
+              getActivityInfo={getActivityInfo}
+              getLyricLabel={getLyricLabel}
+              getPlaylistInfo={getPlaylistInfo}
             />
           )}
         </div>
@@ -233,7 +237,7 @@ export function MusicScreen() {
         <div className="mt-6">
           {musicSearchMode === "playlist" ? (
             <>
-              <SectionTitle title={hasQuery ? "Hasil pencarian playlist" : "Playlist berbasis aktivitas"} />
+              <SectionTitle title={hasQuery ? t("musicScreen.playlistResults") : t("musicScreen.activityPlaylists")} />
               <div className="mt-3 grid grid-cols-2 gap-3">
                 {visiblePlaylists.map((item) => (
                   <PlaylistCard
@@ -247,7 +251,7 @@ export function MusicScreen() {
                     onQueue={() => addPlaylistTrack(item)}
                     onOffline={() => {
                       setAutoDownload(true);
-                      showToast("Offline aktif", `${item.title} akan diprioritaskan saat koneksi lemah.`);
+                      showToast("musicScreen.offlineToastTitle", "musicScreen.offlinePriorityToast", { title: item.title });
                     }}
                   />
                 ))}
@@ -257,7 +261,7 @@ export function MusicScreen() {
 
           {musicSearchMode === "song" ? (
             <>
-              <SectionTitle title={hasQuery ? "Hasil pencarian lagu" : "Lagu rekomendasi"} />
+              <SectionTitle title={hasQuery ? t("musicScreen.songResults") : t("musicScreen.recommendedSongs")} />
               <div className="mt-3 space-y-3">
                 {visibleSongs.map((song) => (
                   <SongResultRow
@@ -267,6 +271,8 @@ export function MusicScreen() {
                     onSelect={() => setSelectedSongId(song.id)}
                     onAddToQueue={() => addSongToQueue(song)}
                     onAddToPlaylist={() => addSongToPlaylist(song)}
+                    t={t}
+                    getActivityInfo={getActivityInfo}
                   />
                 ))}
               </div>
@@ -275,7 +281,7 @@ export function MusicScreen() {
 
           {musicSearchMode === "artist" ? (
             <>
-              <SectionTitle title={hasQuery ? "Hasil pencarian artist" : "Artist populer untuk mock demo"} />
+              <SectionTitle title={hasQuery ? t("musicScreen.artistResults") : t("musicScreen.popularArtists")} />
               <div className="mt-3 space-y-3">
                 {Object.entries(artistGroups).map(([artist, songs]) => (
                   <ArtistResultGroup
@@ -286,6 +292,7 @@ export function MusicScreen() {
                     onSelectSong={(song) => setSelectedSongId(song.id)}
                     onAddToQueue={addSongToQueue}
                     onAddToPlaylist={addSongToPlaylist}
+                    t={t}
                   />
                 ))}
               </div>
@@ -297,11 +304,11 @@ export function MusicScreen() {
   );
 }
 
-function SearchModeTabs({ mode, onChange }) {
+function SearchModeTabs({ mode, onChange, t }) {
   const items = [
-    { key: "playlist", label: "Playlist" },
-    { key: "song", label: "Lagu" },
-    { key: "artist", label: "Artist" },
+    { key: "playlist", label: t("musicScreen.playlistTab") },
+    { key: "song", label: t("musicScreen.songTab") },
+    { key: "artist", label: t("musicScreen.artistTab") },
   ];
 
   return (
@@ -310,10 +317,7 @@ function SearchModeTabs({ mode, onChange }) {
         <button
           key={item.key}
           onClick={() => onChange(item.key)}
-          className={cx(
-            "rounded-xl px-2 py-2 text-xs font-bold transition",
-            mode === item.key ? "bg-[#082B5C] text-white shadow-sm" : "text-slate-500"
-          )}
+          className={cx("rounded-xl px-2 py-2 text-xs font-bold transition", mode === item.key ? "bg-[#082B5C] text-white shadow-sm" : "text-slate-500")}
         >
           {item.label}
         </button>
@@ -322,66 +326,64 @@ function SearchModeTabs({ mode, onChange }) {
   );
 }
 
-function SongDetailPanel({ song, targetPlaylistId, onTargetChange, playlistTracks, onAddToQueue, onAddToPlaylist }) {
-  const targetPlaylist = playlists.find((item) => item.id === targetPlaylistId) ?? playlists[0];
+function SongDetailPanel({ song, targetPlaylistId, onTargetChange, playlistTracks, onAddToQueue, onAddToPlaylist, t, getActivityInfo, getLyricLabel, getPlaylistInfo }) {
+  const targetPlaylist = getPlaylistInfo(playlists.find((item) => item.id === targetPlaylistId) ?? playlists[0]);
   const alreadyAdded = (playlistTracks[targetPlaylistId] ?? []).includes(song.id);
 
   return (
     <div>
-      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-100">Song detail</div>
+      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-100">{t("musicScreen.songDetail")}</div>
       <div className="mt-2 text-2xl font-black tracking-tight">{song.title}</div>
       <p className="mt-1 text-sm text-cyan-50/90">
         {song.artist} - {song.album}
       </p>
       <p className="mt-2 text-sm leading-6 text-cyan-50/80">
-        {song.mood}. Cocok untuk {song.activityFit.toLowerCase()} mode, dengan status lirik {song.lyric}.
+        {t("musicScreen.songDescription", { mood: song.mood, activity: getActivityInfo(song.activityFit).label.toLowerCase(), lyric: getLyricLabel(song.lyric) })}
       </p>
 
       <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
-        <MiniStat label="Durasi" value={song.length} />
-        <MiniStat label="Focus" value={song.focusSafe ? "Safe" : "Review"} />
-        <MiniStat label="Offline" value={song.offline ? "Ready" : "Need"} />
+        <MiniStat label={t("musicScreen.duration")} value={song.length} />
+        <MiniStat label={t("musicScreen.focus")} value={song.focusSafe ? t("common.safe") : t("common.review")} />
+        <MiniStat label={t("musicScreen.offline")} value={song.offline ? t("common.ready") : t("common.need")} />
       </div>
 
-      <TargetPlaylistSelector value={targetPlaylistId} onChange={onTargetChange} playlistTracks={playlistTracks} />
+      <TargetPlaylistSelector value={targetPlaylistId} onChange={onTargetChange} playlistTracks={playlistTracks} t={t} getPlaylistInfo={getPlaylistInfo} />
 
       <div className="mt-4 grid grid-cols-2 gap-2">
         <button onClick={onAddToQueue} className="rounded-2xl bg-white px-3 py-3 text-xs font-black text-[#082B5C]">
-          Tambah ke queue
+          {t("musicScreen.addToQueue")}
         </button>
         <button onClick={onAddToPlaylist} className="rounded-2xl bg-white/10 px-3 py-3 text-xs font-bold text-white ring-1 ring-white/15">
-          {alreadyAdded ? "Sudah di playlist" : `Tambah ke ${targetPlaylist.title.split(" ")[0]}`}
+          {alreadyAdded ? t("musicScreen.alreadyInPlaylist") : t("musicScreen.addToPlaylist", { playlist: targetPlaylist.title.split(" ")[0] })}
         </button>
       </div>
 
       {!song.focusSafe ? (
         <div className="mt-3 rounded-2xl bg-white/10 px-3 py-2 text-xs leading-5 text-cyan-50 ring-1 ring-white/15">
-          Lagu ini punya lirik/energi tinggi. Cocok untuk break, ride, atau queue non-strict.
+          {t("musicScreen.highEnergyWarning")}
         </div>
       ) : null}
     </div>
   );
 }
 
-function TargetPlaylistSelector({ value, onChange, playlistTracks }) {
+function TargetPlaylistSelector({ value, onChange, playlistTracks, t, getPlaylistInfo }) {
   return (
     <div className="mt-4">
-      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100">Target playlist</div>
+      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100">{t("musicScreen.targetPlaylist")}</div>
       <div className="flex gap-2 overflow-x-auto pb-1">
         {playlists.map((item) => {
           const active = value === item.id;
           const count = playlistTracks[item.id]?.length ?? 0;
+          const playlist = getPlaylistInfo(item);
           return (
             <button
               key={item.id}
               onClick={() => onChange(item.id)}
-              className={cx(
-                "min-w-[132px] rounded-2xl border px-3 py-3 text-left transition",
-                active ? "border-white bg-white text-[#082B5C]" : "border-white/15 bg-white/10 text-white"
-              )}
+              className={cx("min-w-[132px] rounded-2xl border px-3 py-3 text-left transition", active ? "border-white bg-white text-[#082B5C]" : "border-white/15 bg-white/10 text-white")}
             >
-              <span className="block truncate text-xs font-black">{item.title}</span>
-              <span className={cx("mt-1 block text-[10px]", active ? "text-slate-500" : "text-cyan-100/80")}>{count} lagu tambahan</span>
+              <span className="block truncate text-xs font-black">{playlist.title}</span>
+              <span className={cx("mt-1 block text-[10px]", active ? "text-slate-500" : "text-cyan-100/80")}>{t("musicScreen.addedCount", { count })}</span>
             </button>
           );
         })}
@@ -390,7 +392,7 @@ function TargetPlaylistSelector({ value, onChange, playlistTracks }) {
   );
 }
 
-function SongResultRow({ song, selected, onSelect, onAddToQueue, onAddToPlaylist }) {
+function SongResultRow({ song, selected, onSelect, onAddToQueue, onAddToPlaylist, t, getActivityInfo }) {
   return (
     <div className={cx("rounded-[22px] bg-white p-3 shadow-sm ring-1", selected ? "ring-[#1C9AA0]" : "ring-slate-100")}>
       <button onClick={onSelect} className="flex w-full items-center gap-3 text-left">
@@ -404,24 +406,24 @@ function SongResultRow({ song, selected, onSelect, onAddToQueue, onAddToPlaylist
           </div>
           <div className="mt-1 flex flex-wrap gap-1">
             <SongBadge>{song.length}</SongBadge>
-            <SongBadge>{song.activityFit}</SongBadge>
-            <SongBadge tone={song.focusSafe ? "safe" : "warn"}>{song.focusSafe ? "Focus safe" : "Review"}</SongBadge>
+            <SongBadge>{getActivityInfo(song.activityFit).label}</SongBadge>
+            <SongBadge tone={song.focusSafe ? "safe" : "warn"}>{song.focusSafe ? t("musicScreen.focusSafe") : t("musicScreen.review")}</SongBadge>
           </div>
         </div>
       </button>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button onClick={onAddToQueue} className="rounded-xl bg-[#ECF7F8] px-3 py-2 text-xs font-bold text-[#1C9AA0]">
-          Queue
+          {t("musicScreen.queueButton")}
         </button>
         <button onClick={onAddToPlaylist} className="rounded-xl bg-[#082B5C] px-3 py-2 text-xs font-bold text-white">
-          Playlist
+          {t("musicScreen.playlistButton")}
         </button>
       </div>
     </div>
   );
 }
 
-function ArtistResultGroup({ artist, songs, selectedSongId, onSelectSong, onAddToQueue, onAddToPlaylist }) {
+function ArtistResultGroup({ artist, songs, selectedSongId, onSelectSong, onAddToQueue, onAddToPlaylist, t }) {
   const safeCount = songs.filter((song) => song.focusSafe).length;
 
   return (
@@ -432,21 +434,13 @@ function ArtistResultGroup({ artist, songs, selectedSongId, onSelectSong, onAddT
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-base font-black text-[#082B5C]">{artist}</div>
-          <div className="text-xs text-slate-500">
-            {songs.length} lagu - {safeCount} focus-safe
-          </div>
+          <div className="text-xs text-slate-500">{t("musicScreen.songsByArtist", { count: songs.length, safeCount })}</div>
         </div>
       </div>
 
       <div className="mt-4 space-y-2">
         {songs.map((song) => (
-          <div
-            key={song.id}
-            className={cx(
-              "flex items-center gap-3 rounded-2xl px-3 py-3",
-              selectedSongId === song.id ? "bg-[#ECF7F8]" : "bg-slate-50"
-            )}
-          >
+          <div key={song.id} className={cx("flex items-center gap-3 rounded-2xl px-3 py-3", selectedSongId === song.id ? "bg-[#ECF7F8]" : "bg-slate-50")}>
             <button onClick={() => onSelectSong(song)} className="min-w-0 flex-1 text-left">
               <div className="truncate text-sm font-semibold text-[#082B5C]">{song.title}</div>
               <div className="truncate text-xs text-slate-500">

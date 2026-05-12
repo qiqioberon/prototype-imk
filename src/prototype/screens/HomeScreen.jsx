@@ -22,8 +22,13 @@ export function HomeScreen() {
     recommendedPlaylists,
     queueInsights,
     startSession,
+    t,
+    getActivityInfo,
+    getContextInfo,
+    getLyricLabel,
   } = usePrototype();
-  const selected = focusActivities[activity];
+  const selected = getActivityInfo(activity);
+  const contextLabel = getContextInfo(selectedContext).label;
   const recommended = recommendedPlaylists.slice(0, 3);
   const topRecommendation = recommended[0] ?? selectedPlaylist;
 
@@ -34,20 +39,20 @@ export function HomeScreen() {
 
         <div className="mt-5 flex items-start justify-between gap-3">
           <div>
-            <div className="text-[28px] font-black tracking-tight text-[#082B5C]">Siap fokus?</div>
+            <div className="text-[28px] font-black tracking-tight text-[#082B5C]">{t("home.title")}</div>
             <div className="text-sm leading-6 text-slate-500">
-              {activity} mode - {selectedContext} - {focusDuration} menit
+              {t("home.modeLine", { activity: selected.label, context: contextLabel, duration: focusDuration })}
             </div>
           </div>
           <div className="rounded-2xl bg-[#ECF7F8] px-3 py-2 text-right">
-            <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#1C9AA0]">Ready</div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#1C9AA0]">{t("common.ready")}</div>
             <div className="text-sm font-black text-[#082B5C]">{queueInsights.readiness}%</div>
           </div>
         </div>
 
         <div className="mt-4 rounded-[28px] bg-[linear-gradient(135deg,#082B5C_0%,#0C4B72_58%,#1C9AA0_100%)] p-5 text-white shadow-xl">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-cyan-100">
-            <Sparkles className="h-4 w-4" /> One-Tap Focus
+            <Sparkles className="h-4 w-4" /> {t("home.oneTapFocus")}
           </div>
           <h2 className="mt-3 max-w-[270px] text-[2rem] font-black leading-tight tracking-tight">{selected.title}</h2>
           <p className="mt-3 text-[15px] leading-7 text-cyan-50/90">{selected.description}</p>
@@ -62,23 +67,26 @@ export function HomeScreen() {
                   activity === item.label ? "bg-white text-[#082B5C]" : "bg-white/10 text-white ring-1 ring-white/20"
                 )}
               >
-                {item.label}
+                {getActivityInfo(item.label).label}
               </button>
             ))}
           </div>
 
           <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
-            <MiniStat label="Playlist" value={selectedPlaylist.title.split(" ")[0]} />
-            <MiniStat label="Durasi" value={`${focusDuration}m`} />
-            <MiniStat label="Lirik" value={lyricPreference === "Tanpa lirik" ? "Low" : lyricPreference === "Bebas" ? "Flex" : "Mix"} />
+            <MiniStat label={t("common.playlist")} value={selectedPlaylist.title.split(" ")[0]} />
+            <MiniStat label={t("common.duration")} value={t("common.minutesShort", { value: focusDuration })} />
+            <MiniStat
+              label={t("common.lyrics")}
+              value={lyricPreference === "Tanpa lirik" ? t("common.low") : lyricPreference === "Bebas" ? t("common.flex") : t("common.mix")}
+            />
           </div>
 
           <div className="mt-5 grid grid-cols-2 gap-3">
             <button onClick={() => setScreen("preset")} className="rounded-2xl bg-white/10 px-4 py-3 text-sm font-semibold text-white ring-1 ring-white/15">
-              Edit Preset
+              {t("home.editPreset")}
             </button>
             <button onClick={() => startSession()} className="rounded-2xl bg-white px-4 py-3 text-sm font-black text-[#082B5C]">
-              Mulai Sesi
+              {t("home.startSession")}
             </button>
           </div>
         </div>
@@ -89,28 +97,28 @@ export function HomeScreen() {
               <Edit3 className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold text-[#082B5C]">Focus briefing</div>
+              <div className="text-sm font-semibold text-[#082B5C]">{t("home.focusBriefing")}</div>
               <div className="mt-1 text-xs leading-5 text-slate-500">
-                Queue health {queueInsights.readiness}% dengan rekomendasi teratas {topRecommendation.title}.
+                {t("home.focusBriefingCopy", { readiness: queueInsights.readiness, playlist: topRecommendation.title })}
               </div>
             </div>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3">
             <div className="rounded-2xl bg-[#F7FAFC] px-3 py-3 ring-1 ring-slate-100">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Next best fit</div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">{t("home.nextBestFit")}</div>
               <div className="mt-1 truncate text-sm font-black text-[#082B5C]">{topRecommendation.title}</div>
-              <div className="mt-1 text-xs text-slate-500">{topRecommendation.match}% fit • {topRecommendation.insight}</div>
+              <div className="mt-1 text-xs text-slate-500">{t("musicScreen.fit", { value: topRecommendation.match })} - {topRecommendation.insight}</div>
             </div>
             <div className="rounded-2xl bg-[#F7FAFC] px-3 py-3 ring-1 ring-slate-100">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Queue status</div>
-              <div className="mt-1 text-sm font-black text-[#082B5C]">{queueInsights.totalMinutes}m coverage</div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">{t("home.queueStatus")}</div>
+              <div className="mt-1 text-sm font-black text-[#082B5C]">{t("home.coverage", { minutes: queueInsights.totalMinutes })}</div>
               <div className="mt-1 text-xs text-slate-500">{queueInsights.note}</div>
             </div>
           </div>
         </div>
 
         <div className="mt-6">
-          <SectionTitle title="Kondisi sekarang" />
+          <SectionTitle title={t("home.currentCondition")} />
           <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
             {contextOptions.map((item) => (
               <button
@@ -122,25 +130,31 @@ export function HomeScreen() {
                 )}
               >
                 <item.icon className="h-4 w-4" />
-                {item.label}
+                {getContextInfo(item.id).label}
               </button>
             ))}
           </div>
         </div>
 
         <div className="mt-6 grid grid-cols-2 gap-3">
-          <ActionCard icon={Settings2} title="Preset siap" subtitle={`${selectedPlaylist.title} • ${lyricPreference}`} action="Edit" onClick={() => setScreen("preset")} />
+          <ActionCard
+            icon={Settings2}
+            title={t("home.presetReady")}
+            subtitle={`${selectedPlaylist.title} - ${getLyricLabel(lyricPreference)}`}
+            action={t("common.edit")}
+            onClick={() => setScreen("preset")}
+          />
           <ActionCard
             icon={Download}
-            title="Offline cache"
-            subtitle={autoDownload ? `${queueInsights.offlineCount} lagu siap offline` : "Ketuk untuk aktifkan"}
-            action={autoDownload ? "Ready" : "Off"}
+            title={t("home.offlineCache")}
+            subtitle={autoDownload ? t("home.offlineCacheOn", { count: queueInsights.offlineCount }) : t("home.offlineCacheOff")}
+            action={autoDownload ? t("common.ready") : t("common.off")}
             onClick={() => setAutoDownload((prev) => !prev)}
           />
         </div>
 
         <div className="mt-6">
-          <SectionTitle title="Rekomendasi untuk konteks ini" action="Music" onAction={() => setScreen("music")} />
+          <SectionTitle title={t("home.recommendations")} action={t("common.music")} onAction={() => setScreen("music")} />
           <div className="mt-3 grid grid-cols-3 gap-3">
             {recommended.map((item) => (
               <PlaylistCard

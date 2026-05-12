@@ -2,7 +2,7 @@ import { ArrowDown, ArrowUp, Ban, Trash2 } from "lucide-react";
 
 import { IconButton } from "./IconButton.jsx";
 
-export function QueueTrackRow({ track, index, onUp, onDown, onRemove, onBlock }) {
+export function QueueTrackRow({ track, index, reason, onUp, onDown, onRemove, onBlock }) {
   return (
     <div className="rounded-[22px] bg-white p-3 shadow-sm ring-1 ring-slate-100">
       <div className="flex items-center gap-3">
@@ -15,6 +15,7 @@ export function QueueTrackRow({ track, index, onUp, onDown, onRemove, onBlock })
         </div>
         {track.distracting ? <Ban className="h-4 w-4 text-rose-500" /> : null}
       </div>
+      {reason ? <div className="mt-3 rounded-2xl bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-500">{reason}</div> : null}
       <div className="mt-3 grid grid-cols-4 gap-2">
         <IconButton label="Up" icon={ArrowUp} onClick={onUp} />
         <IconButton label="Down" icon={ArrowDown} onClick={onDown} />

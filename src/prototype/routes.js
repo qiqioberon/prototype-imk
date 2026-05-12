@@ -12,6 +12,7 @@ export const screenLabels = {
   queue: "Queue",
   review: "Review",
   stats: "Stats",
+  profile: "Profile",
 };
 
 export const screenOrder = Object.keys(screenLabels);
@@ -28,6 +29,7 @@ export const screenPaths = {
   queue: "/queue",
   review: "/review",
   stats: "/stats",
+  profile: "/profile",
 };
 
 export function isValidScreen(screen) {

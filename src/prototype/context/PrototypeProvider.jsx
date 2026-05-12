@@ -15,6 +15,7 @@ import {
   songCatalog,
 } from "../data.js";
 import { DEFAULT_SCREEN, getScreenFromPathname, getScreenPath, isValidScreen } from "../routes.js";
+import { DEFAULT_LOCALE, getDictionary, supportedLocales, translate } from "../i18n/dictionaries.js";
 import { clamp, formatClock, formatDurationLabel } from "../lib/format.js";
 import {
   buildQueueInsights,
@@ -57,7 +58,14 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
   const [filters, setFilters] = useState(initialFilters);
   const [focusStats, setFocusStats] = useState(initialFocusStats);
   const [sessionState, setSessionState] = useState(() => createSessionState(45));
+  const [locale, setLocaleState] = useState(DEFAULT_LOCALE);
+  const [showTimerInPlayer, setShowTimerInPlayer] = useState(true);
+  const [showSmartQueueDetails, setShowSmartQueueDetails] = useState(true);
+  const [showBlockedReasons, setShowBlockedReasons] = useState(true);
   const [toast, setToast] = useState(null);
+
+  const dictionary = useMemo(() => getDictionary(locale), [locale]);
+  const t = useCallback((key, params) => translate(locale, key, params), [locale]);
 
   const setScreen = useCallback(
     (nextScreen) => {
@@ -69,13 +77,25 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
     [router]
   );
 
-  const showToast = useCallback((title, description) => {
+  const showToast = useCallback((title, description, params = {}) => {
     setToast({
       id: Date.now(),
       title,
       description,
+      params,
     });
   }, []);
+
+  const setLocale = useCallback(
+    (nextLocale) => {
+      if (!supportedLocales.includes(nextLocale)) return;
+      setLocaleState(nextLocale);
+      showToast("languageChangedTitle", "languageChangedDescription", {
+        language: translate(nextLocale, nextLocale === "id" ? "profile.id" : "profile.en"),
+      });
+    },
+    [showToast]
+  );
 
   useEffect(() => {
     if (!toast) return;
@@ -95,6 +115,12 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
   }, [pathname, screen]);
 
   useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.lang = dictionary.meta.htmlLang;
+    document.title = dictionary.meta.title;
+  }, [dictionary]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
 
     try {
@@ -108,6 +134,7 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
       const availablePlaylists = new Set(playlists.map((item) => item.id));
       const availableSongs = new Set(songCatalog.map((item) => item.id));
 
+      if (supportedLocales.includes(parsed.locale)) setLocaleState(parsed.locale);
       if (availableActivities.has(parsed.activity)) setActivity(parsed.activity);
       if (Array.isArray(parsed.selectedActivities)) {
         const nextActivities = parsed.selectedActivities.filter((item) => availableActivities.has(item));
@@ -135,6 +162,9 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
       if (parsed.filters && typeof parsed.filters === "object") setFilters({ ...initialFilters, ...parsed.filters });
       if (parsed.focusStats) setFocusStats(normalizeFocusStats(parsed.focusStats));
       if (parsed.sessionState) setSessionState(normalizeSessionState(parsed.sessionState, nextFocusDuration));
+      if (typeof parsed.showTimerInPlayer === "boolean") setShowTimerInPlayer(parsed.showTimerInPlayer);
+      if (typeof parsed.showSmartQueueDetails === "boolean") setShowSmartQueueDetails(parsed.showSmartQueueDetails);
+      if (typeof parsed.showBlockedReasons === "boolean") setShowBlockedReasons(parsed.showBlockedReasons);
     } catch (error) {
       console.error("Failed to restore FocusTunes prototype state", error);
     }
@@ -144,6 +174,7 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
     if (typeof window === "undefined") return;
 
     const payload = {
+      locale,
       activity,
       selectedActivities,
       selectedContext,
@@ -166,6 +197,9 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
       filters,
       focusStats,
       sessionState,
+      showTimerInPlayer,
+      showSmartQueueDetails,
+      showBlockedReasons,
     };
 
     window.localStorage.setItem(PROTOTYPE_STORAGE_KEY, JSON.stringify(payload));
@@ -192,6 +226,10 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
     filters,
     focusStats,
     sessionState,
+    locale,
+    showTimerInPlayer,
+    showSmartQueueDetails,
+    showBlockedReasons,
   ]);
 
   useEffect(() => {
@@ -222,27 +260,118 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
     return () => window.clearInterval(interval);
   }, [sessionState.hasStarted, sessionState.isActive, isSessionPaused]);
 
-  const selectedPlaylist = useMemo(
+  const selectedPlaylistRaw = useMemo(
     () => playlists.find((item) => item.id === selectedPlaylistId) ?? playlists[0],
     [selectedPlaylistId]
   );
 
-  const selectedPlaylistDetail = useMemo(
-    () => playlists.find((item) => item.id === selectedPlaylistDetailId) ?? selectedPlaylist,
-    [selectedPlaylistDetailId, selectedPlaylist]
+  const selectedPlaylistDetailRaw = useMemo(
+    () => playlists.find((item) => item.id === selectedPlaylistDetailId) ?? selectedPlaylistRaw,
+    [selectedPlaylistDetailId, selectedPlaylistRaw]
   );
 
-  const selectedSong = useMemo(
+  const selectedSongRaw = useMemo(
     () => songCatalog.find((item) => item.id === selectedSongId) ?? songCatalog[0],
     [selectedSongId]
   );
 
+  const getActivityInfo = useCallback(
+    (activityId) => ({
+      ...focusActivities[activityId],
+      ...(dictionary.activities[activityId] ?? {}),
+      id: activityId,
+    }),
+    [dictionary]
+  );
+
+  const getContextInfo = useCallback(
+    (contextId) => {
+      const base = contextOptions.find((item) => item.id === contextId) ?? { id: contextId };
+      return {
+        ...base,
+        ...(dictionary.contexts[contextId] ?? {}),
+      };
+    },
+    [dictionary]
+  );
+
+  const getLyricLabel = useCallback((value) => dictionary.lyrics[value] ?? value, [dictionary]);
+
+  const getPlaylistInfo = useCallback(
+    (playlistOrId) => {
+      const base =
+        typeof playlistOrId === "string"
+          ? playlists.find((item) => item.id === playlistOrId)
+          : playlistOrId;
+      if (!base) return null;
+      const localized = dictionary.playlists[base.id] ?? {};
+      return {
+        ...base,
+        ...localized,
+        lyricLabel: getLyricLabel(base.lyric),
+      };
+    },
+    [dictionary, getLyricLabel]
+  );
+
+  const getSongInfo = useCallback(
+    (songOrId) => {
+      const base =
+        typeof songOrId === "string"
+          ? songCatalog.find((item) => item.id === songOrId)
+          : songOrId;
+      if (!base) return null;
+      return {
+        ...base,
+        ...(dictionary.songs[base.id] ?? {}),
+      };
+    },
+    [dictionary]
+  );
+
+  const getTrackFocusReason = useCallback(
+    (track) => {
+      if (!track) return "";
+      if (blockedTracks.includes(track.title)) return t("queueReasons.blocked");
+      if (track.distracting) return t("queueReasons.distracting");
+      if (track.focusSafe === false) return t("queueReasons.focusUnsafe");
+      if (track.lyric === "EN") return t("queueReasons.vocal");
+      if (!track.offline) return t("queueReasons.offline");
+      return t("queueReasons.safe");
+    },
+    [blockedTracks, t]
+  );
+
+  const selectedPlaylist = useMemo(
+    () => getPlaylistInfo(selectedPlaylistRaw) ?? selectedPlaylistRaw,
+    [getPlaylistInfo, selectedPlaylistRaw]
+  );
+
+  const selectedPlaylistDetail = useMemo(
+    () => getPlaylistInfo(selectedPlaylistDetailRaw) ?? selectedPlaylist,
+    [getPlaylistInfo, selectedPlaylistDetailRaw, selectedPlaylist]
+  );
+
+  const selectedSong = useMemo(
+    () => getSongInfo(selectedSongRaw) ?? selectedSongRaw,
+    [getSongInfo, selectedSongRaw]
+  );
+
   const currentTrack = useMemo(() => queueList[0] ?? initialQueueTracks[0], [queueList]);
 
-  const queueInsights = useMemo(
+  const queueInsightsRaw = useMemo(
     () => buildQueueInsights(queueList, blockedTracks, focusDuration, autoDownload),
     [queueList, blockedTracks, focusDuration, autoDownload]
   );
+
+  const queueInsights = useMemo(() => {
+    const issues = queueInsightsRaw.issues.map((issue) => t(`queueIssues.${issue.key}`, issue.params));
+    return {
+      ...queueInsightsRaw,
+      issues,
+      note: issues.length > 0 ? t("queueIssues.priority", { issue: issues[0] }) : t("queueIssues.ready"),
+    };
+  }, [queueInsightsRaw, t]);
 
   const recommendedPlaylists = useMemo(
     () =>
@@ -254,8 +383,35 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
         autoDownload,
         playlistTracks,
         blockedTracks,
+      }).map((playlist) => {
+        const localized = getPlaylistInfo(playlist) ?? playlist;
+        const insight =
+          playlist.reasonKeys
+            ?.map((reason) =>
+              t(`playlistReasons.${reason.key}`, {
+                ...reason.params,
+                activity: getActivityInfo(reason.params.activity)?.label ?? reason.params.activity,
+                context: getContextInfo(reason.params.context)?.label ?? reason.params.context,
+                lyric: getLyricLabel(reason.params.lyric),
+              })
+            )
+            .join(" - ") || t("playlistReasons.ready");
+        return { ...localized, match: playlist.match, trackCount: playlist.trackCount, reasonKeys: playlist.reasonKeys, insight };
       }),
-    [activity, selectedContext, lyricPreference, focusDuration, autoDownload, playlistTracks, blockedTracks]
+    [
+      activity,
+      selectedContext,
+      lyricPreference,
+      focusDuration,
+      autoDownload,
+      playlistTracks,
+      blockedTracks,
+      getPlaylistInfo,
+      getActivityInfo,
+      getContextInfo,
+      getLyricLabel,
+      t,
+    ]
   );
 
   const sessionProgress = useMemo(() => {
@@ -275,7 +431,7 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
   const finishSession = useCallback(
     (reason = "manual") => {
       if (!sessionState.hasStarted) {
-        showToast("Session belum dimulai", "Mulai sesi dulu agar metrik bisa dihitung.");
+        showToast("sessionNotStartedTitle", "sessionNotStartedDescription");
         return;
       }
 
@@ -325,7 +481,9 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
       setIsSessionPaused(false);
       setSessionState(createSessionState(focusDuration));
       setScreen("review");
-      showToast(reason === "timer" ? "Sesi selesai otomatis" : "Sesi tersimpan", `${nextSummary.duration} masuk ke statistik.`);
+      showToast(reason === "timer" ? "sessionAutoFinishedTitle" : "sessionSavedTitle", "sessionSavedDescription", {
+        duration: t("common.minutesLong", { value: nextSummary.durationMinutes }),
+      });
     },
     [
       sessionState,
@@ -337,6 +495,7 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
       focusDuration,
       setScreen,
       showToast,
+      t,
     ]
   );
 
@@ -349,7 +508,7 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
   const startSession = useCallback(
     (options = {}) => {
       if (queueList.length === 0) {
-        showToast("Queue kosong", "Tambahkan lagu atau playlist dulu.");
+        showToast("emptyQueueTitle", "emptyQueueDescription");
         setScreen("queue");
         return;
       }
@@ -368,9 +527,12 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
         })
       );
       setScreen(options.screen ?? "session");
-      showToast("Sesi dimulai", `${nextActivity} mode • ${nextDuration} menit`);
+      showToast("sessionStartedTitle", "sessionStartedDescription", {
+        activity: getActivityInfo(nextActivity)?.label ?? nextActivity,
+        duration: nextDuration,
+      });
     },
-    [queueList.length, showToast, setScreen, activity, focusDuration, selectedActivities.length, autoDownload, filters.lyrics]
+    [queueList.length, showToast, setScreen, activity, focusDuration, selectedActivities.length, autoDownload, filters.lyrics, getActivityInfo]
   );
 
   const toggleSessionPause = useCallback(() => {
@@ -381,7 +543,7 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
 
     setIsSessionPaused((previous) => {
       const next = !previous;
-      showToast(next ? "Session dipause" : "Session dilanjutkan", next ? "Timer berhenti sementara." : "Focus flow aktif kembali.");
+      showToast(next ? "sessionPausedTitle" : "sessionResumedTitle", next ? "sessionPausedDescription" : "sessionResumedDescription");
       return next;
     });
   }, [sessionState.hasStarted, startSession, showToast]);
@@ -396,13 +558,14 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
           savedSetup: selectedPlaylist.title,
         },
       }));
-      showToast("Preset disimpan", `${selectedPlaylist.title} siap dipakai lagi.`);
+      showToast("presetSavedTitle", "presetSavedDescription", { title: selectedPlaylist.title });
       if (nextScreen) setScreen(nextScreen);
     },
     [selectedPlaylist.title, setScreen, showToast]
   );
 
   const smartQueue = useCallback(() => {
+    let fixSummary = { moved: 0, blocked: 0, readiness: queueInsights.readiness };
     setQueueList((previous) => {
       const seen = new Set();
       const deduplicated = previous.filter((track) => {
@@ -412,7 +575,7 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
         return true;
       });
 
-      return deduplicated
+      const nextQueue = deduplicated
         .map((track, index) => ({ track, index }))
         .sort((left, right) => scoreTrackForFocus(right.track, blockedTracks) - scoreTrackForFocus(left.track, blockedTracks) || left.index - right.index)
         .map(({ track }) =>
@@ -423,9 +586,17 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
               }
             : track
         );
+
+      fixSummary = {
+        moved: nextQueue.filter((track, index) => track.id !== previous[index]?.id).length,
+        blocked: nextQueue.filter((track) => track.distracting || blockedTracks.includes(track.title)).length,
+        readiness: buildQueueInsights(nextQueue, blockedTracks, focusDuration, autoDownload).readiness,
+      };
+
+      return nextQueue;
     });
-    showToast("Queue dirapikan", "Lagu fokus-safe dan offline diprioritaskan.");
-  }, [blockedTracks, showToast]);
+    showToast("queueFixedTitle", showSmartQueueDetails ? "queueFixedDetailed" : "queueFixedDescription", fixSummary);
+  }, [blockedTracks, showToast, queueInsights.readiness, focusDuration, autoDownload, showSmartQueueDetails]);
 
   const rotateQueue = useCallback(
     (direction = "next") => {
@@ -454,13 +625,17 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
           }
         : previous
     );
-    showToast("Track dilewati", "Queue menyesuaikan mood fokus.");
+    showToast("trackSkippedTitle", "trackSkippedDescription");
   }, [rotateQueue, showToast]);
 
   const value = useMemo(
     () => ({
       screen,
       setScreen,
+      locale,
+      setLocale,
+      t,
+      dictionary,
       activity,
       setActivity,
       selectedActivities,
@@ -513,6 +688,18 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
       recommendedPlaylists,
       toast,
       showToast,
+      showTimerInPlayer,
+      setShowTimerInPlayer,
+      showSmartQueueDetails,
+      setShowSmartQueueDetails,
+      showBlockedReasons,
+      setShowBlockedReasons,
+      getActivityInfo,
+      getContextInfo,
+      getLyricLabel,
+      getPlaylistInfo,
+      getSongInfo,
+      getTrackFocusReason,
       startSession,
       toggleSessionPause,
       finishSession,
@@ -524,6 +711,10 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
     [
       screen,
       setScreen,
+      locale,
+      setLocale,
+      t,
+      dictionary,
       activity,
       selectedActivities,
       selectedContext,
@@ -556,6 +747,15 @@ export function PrototypeProvider({ children, initialScreen = DEFAULT_SCREEN }) 
       recommendedPlaylists,
       toast,
       showToast,
+      showTimerInPlayer,
+      showSmartQueueDetails,
+      showBlockedReasons,
+      getActivityInfo,
+      getContextInfo,
+      getLyricLabel,
+      getPlaylistInfo,
+      getSongInfo,
+      getTrackFocusReason,
       startSession,
       toggleSessionPause,
       finishSession,

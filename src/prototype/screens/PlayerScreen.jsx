@@ -1,4 +1,4 @@
-import { ChevronDown, Heart, ListOrdered, MoreHorizontal, Pause, Play, Repeat2, Share2, Shuffle, SkipBack, SkipForward, Volume2 } from "lucide-react";
+import { ChevronDown, Heart, ListOrdered, MoreHorizontal, Pause, Play, Repeat2, Share2, Shuffle, SkipBack, SkipForward, Timer, Volume2 } from "lucide-react";
 
 import { initialQueueTracks } from "../data.js";
 import { usePrototype } from "../context/PrototypeProvider.jsx";
@@ -10,27 +10,32 @@ export function PlayerScreen() {
     setScreen,
     isMusicPlaying,
     setIsMusicPlaying,
+    isSessionPaused,
     queueList,
     selectedPlaylist,
     currentTrack,
     sessionProgress,
     sessionState,
+    sessionSummaryData,
+    showTimerInPlayer,
     rotateQueue,
     skipCurrentTrack,
+    t,
   } = usePrototype();
   const current = currentTrack ?? queueList[0] ?? initialQueueTracks[0];
   const trackProgress = clamp(sessionState.hasStarted ? sessionProgress : 0.42, 0.05, 0.97);
   const trackLengthSeconds = parseTrackLength(current.length);
   const elapsedTrackSeconds = Math.round(trackLengthSeconds * trackProgress);
   const remainingTrackSeconds = Math.max(0, trackLengthSeconds - elapsedTrackSeconds);
-  const lyricHeadline = current.focusSafe === false ? "Energi sedang tinggi" : "Focus-safe track";
-  const lyricBody = current.focusSafe === false ? "Cocok untuk break singkat atau sesi ride." : "Aman untuk writing, study, dan coding mode.";
+  const lyricHeadline = current.focusSafe === false ? t("player.highEnergy") : t("player.focusSafeTrack");
+  const lyricBody = current.focusSafe === false ? t("player.highEnergyBody") : t("player.focusSafeBody");
+  const timerStatus = !sessionState.hasStarted ? t("player.timerReady") : isSessionPaused ? t("player.timerPaused") : t("player.timerActive");
 
   return (
     <div className="h-full overflow-hidden bg-[#19191D] text-white">
       <StatusBar dark={false} />
       <div className="h-full overflow-y-auto px-5 pb-10 pt-7">
-        <div className="text-sm font-medium text-white/45">Track View</div>
+        <div className="text-sm font-medium text-white/45">{t("player.trackView")}</div>
 
         <div className="mt-3 rounded-[28px] bg-[linear-gradient(180deg,#A51F18_0%,#5B0907_52%,#1A1111_100%)] px-4 pb-5 pt-4 shadow-2xl">
           <div className="flex items-center justify-between">
@@ -43,7 +48,25 @@ export function PlayerScreen() {
             </button>
           </div>
 
-          <div className="mx-auto mt-12 grid aspect-square w-[86%] place-items-center bg-[#C63B2E] shadow-[0_26px_60px_rgba(0,0,0,0.28)]">
+          {showTimerInPlayer ? (
+            <button
+              onClick={() => setScreen("session")}
+              className="mt-4 flex w-full items-center gap-3 rounded-2xl bg-white/10 px-3 py-3 text-left ring-1 ring-white/10"
+            >
+              <div className="grid h-9 w-9 place-items-center rounded-xl bg-white/10 text-emerald-300">
+                <Timer className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-300">{t("player.focusTimer")}</div>
+                <div className="truncate text-sm font-semibold text-white">{timerStatus}</div>
+              </div>
+              <div className="text-xs text-white/60">
+                {sessionState.hasStarted ? t("player.remaining", { time: sessionSummaryData.remainingLabel }) : "--:--"}
+              </div>
+            </button>
+          ) : null}
+
+          <div className="mx-auto mt-8 grid aspect-square w-[86%] place-items-center bg-[#C63B2E] shadow-[0_26px_60px_rgba(0,0,0,0.28)]">
             <div className="text-center">
               <div className="text-xs font-black uppercase tracking-[0.18em] text-yellow-200">FocusTunes</div>
               <div className="mt-2 text-[7rem] font-black leading-none text-yellow-100">1</div>
@@ -81,6 +104,7 @@ export function PlayerScreen() {
             <button
               onClick={() => setIsMusicPlaying((prev) => !prev)}
               className="grid h-16 w-16 place-items-center rounded-full bg-white text-[#4E0A08] shadow-xl"
+              aria-label={isMusicPlaying ? t("layout.pauseMusic") : t("layout.playMusic")}
             >
               {isMusicPlaying ? <Pause className="h-7 w-7" /> : <Play className="ml-1 h-7 w-7" />}
             </button>
@@ -94,7 +118,7 @@ export function PlayerScreen() {
 
           <div className="mt-7 flex items-center justify-between text-white/70">
             <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-400">
-              <Volume2 className="h-4 w-4" /> BEATSPILL+
+              <Volume2 className="h-4 w-4" /> {isMusicPlaying ? t("player.musicPlaying") : t("player.musicPaused")}
             </div>
             <div className="flex items-center gap-5">
               <Share2 className="h-5 w-5" />
@@ -107,12 +131,12 @@ export function PlayerScreen() {
 
         <div className="mt-5 rounded-[24px] bg-[#E46F24] p-4 text-white shadow-lg">
           <div className="flex items-center justify-between">
-            <div className="text-base font-black">Lyrics</div>
-            <button className="rounded-full bg-black/25 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em]">More</button>
+            <div className="text-base font-black">{t("player.lyrics")}</div>
+            <button className="rounded-full bg-black/25 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em]">{t("player.more")}</button>
           </div>
           <div className="mt-5 space-y-3 text-xl font-black leading-7 text-white/90">
             <p>{lyricHeadline}</p>
-            <p className="text-white/55">{current.lyric ? `Lirik: ${current.lyric}` : "No vocal lyrics detected"}</p>
+            <p className="text-white/55">{current.lyric ? t("player.lyricDetected", { lyric: current.lyric }) : t("player.noLyrics")}</p>
             <p className="text-white/55">{lyricBody}</p>
           </div>
         </div>
@@ -120,11 +144,11 @@ export function PlayerScreen() {
         <div className="mt-5 rounded-[24px] bg-white/[0.08] p-4 ring-1 ring-white/10">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-base font-black">Queue</div>
-              <div className="text-xs text-white/45">Up next in focus mode</div>
+              <div className="text-base font-black">{t("player.queue")}</div>
+              <div className="text-xs text-white/45">{t("player.upNext")}</div>
             </div>
             <button onClick={() => setScreen("queue")} className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-400">
-              Open
+              {t("player.open")}
             </button>
           </div>
           <div className="mt-4 space-y-3">

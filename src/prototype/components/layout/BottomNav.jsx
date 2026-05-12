@@ -4,12 +4,12 @@ import { usePrototype } from "../../context/PrototypeProvider.jsx";
 import { cx } from "../../lib/format.js";
 
 export function BottomNav() {
-  const { screen, setScreen } = usePrototype();
+  const { screen, setScreen, t } = usePrototype();
   const items = [
-    { key: "home", label: "Home", icon: House },
-    { key: "music", label: "Music", icon: Music4 },
-    { key: "queue", label: "Queue", icon: ListOrdered },
-    { key: "stats", label: "Stats", icon: ChartNoAxesColumn },
+    { key: "home", label: t("common.home"), icon: House },
+    { key: "music", label: t("common.music"), icon: Music4 },
+    { key: "queue", label: t("common.queue"), icon: ListOrdered },
+    { key: "stats", label: t("common.stats"), icon: ChartNoAxesColumn },
   ];
 
   return (

@@ -108,9 +108,9 @@ export function buildQueueInsights(queueList, blockedTracks, focusDuration, auto
   );
   const issues = [];
 
-  if (coverageGap > 0) issues.push(`durasi kurang ${coverageGap}m`);
-  if (blockedCount > 0) issues.push(`${blockedCount} lagu berisiko distraksi`);
-  if (queueList.length > 0 && offlineCount < Math.ceil(queueList.length * 0.6)) issues.push("cadangan offline tipis");
+  if (coverageGap > 0) issues.push({ key: "coverageGap", params: { minutes: coverageGap } });
+  if (blockedCount > 0) issues.push({ key: "blocked", params: { count: blockedCount } });
+  if (queueList.length > 0 && offlineCount < Math.ceil(queueList.length * 0.6)) issues.push({ key: "offlineThin", params: {} });
 
   return {
     totalMinutes: Math.max(0, Math.round(totalMinutes)),
@@ -119,7 +119,6 @@ export function buildQueueInsights(queueList, blockedTracks, focusDuration, auto
     reviewCount,
     readiness,
     issues,
-    note: issues.length > 0 ? `Prioritas: ${issues[0]}.` : "Queue sudah siap untuk sesi fokus berikutnya.",
   };
 }
 
@@ -135,34 +134,34 @@ export function rankPlaylistsByFit(items, { activity, selectedContext, lyricPref
 
       if (playlist.activity === activity) {
         score += 22;
-        reasons.push(activity);
+        reasons.push({ key: "activity", params: { activity } });
       }
       if (playlist.context === selectedContext) {
         score += 18;
-        reasons.push(selectedContext);
+        reasons.push({ key: "context", params: { context: selectedContext } });
       }
       if (playlist.lyric === lyricPreference) {
         score += 12;
-        reasons.push(lyricPreference.toLowerCase());
+        reasons.push({ key: "lyric", params: { lyric: lyricPreference } });
       }
       if (Math.abs(playlist.duration - focusDuration) <= 15) {
         score += 10;
-        reasons.push("durasi pas");
+        reasons.push({ key: "duration", params: {} });
       }
       if (playlist.offline && autoDownload) {
         score += 8;
-        reasons.push("offline ready");
+        reasons.push({ key: "offline", params: {} });
       }
       if (blockedHitCount > 0) {
         score -= blockedHitCount * 12;
-        reasons.push(`${blockedHitCount} blocked`);
+        reasons.push({ key: "blocked", params: { count: blockedHitCount } });
       }
 
       return {
         ...playlist,
         match: clamp(score, 45, 99),
         trackCount: playlistTracks[playlist.id]?.length ?? 0,
-        insight: reasons.slice(0, 2).join(" • ") || "siap untuk fokus",
+        reasonKeys: reasons.slice(0, 2),
       };
     })
     .sort((left, right) => right.match - left.match || left.duration - right.duration);

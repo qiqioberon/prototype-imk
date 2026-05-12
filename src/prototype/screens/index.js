@@ -9,6 +9,7 @@ import { SessionScreen } from "./SessionScreen.jsx";
 import { QueueScreen } from "./QueueScreen.jsx";
 import { ReviewScreen } from "./ReviewScreen.jsx";
 import { StatsScreen } from "./stats/StatsScreen.jsx";
+import { ProfileScreen } from "./profile/ProfileScreen.jsx";
 
 export const screens = {
   splash: SplashScreen,
@@ -22,6 +23,7 @@ export const screens = {
   queue: QueueScreen,
   review: ReviewScreen,
   stats: StatsScreen,
+  profile: ProfileScreen,
 };
 
 export {
@@ -36,4 +38,5 @@ export {
   QueueScreen,
   ReviewScreen,
   StatsScreen,
+  ProfileScreen,
 };

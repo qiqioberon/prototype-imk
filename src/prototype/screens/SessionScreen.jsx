@@ -24,8 +24,13 @@ export function SessionScreen() {
     startSession,
     toggleSessionPause,
     finishSession,
+    t,
+    getActivityInfo,
+    getContextInfo,
   } = usePrototype();
   const hasStarted = sessionState.hasStarted;
+  const activityInfo = getActivityInfo(activity);
+  const contextInfo = getContextInfo(selectedContext);
   const progress = hasStarted ? sessionProgress : queueInsights.readiness / 100;
   const ring = useMemo(
     () => ({
@@ -35,17 +40,22 @@ export function SessionScreen() {
   );
 
   const toggles = [
-    { key: "playlist", label: "Preset queue", icon: Music4, note: selectedPlaylist.title },
-    { key: "lyrics", label: "Filter lirik", icon: Filter, note: selectedPlaylist.lyric },
-    { key: "noise", label: "Noise cancellation", icon: Headphones, note: `aktif untuk konteks ${selectedContext}` },
-    { key: "offline", label: "Offline fallback", icon: WifiOff, note: selectedPlaylist.offline ? "playlist aman offline" : "butuh download" },
+    { key: "playlist", label: t("sessionScreen.presetQueue"), icon: Music4, note: selectedPlaylist.title },
+    { key: "lyrics", label: t("sessionScreen.lyricFilter"), icon: Filter, note: selectedPlaylist.lyricLabel },
+    { key: "noise", label: t("sessionScreen.noiseCancellation"), icon: Headphones, note: t("sessionScreen.noiseNote", { context: contextInfo.label }) },
+    {
+      key: "offline",
+      label: t("sessionScreen.offlineFallback"),
+      icon: WifiOff,
+      note: selectedPlaylist.offline ? t("sessionScreen.offlineSafe") : t("sessionScreen.offlineNeed"),
+    },
   ];
-  const sessionLabel = !hasStarted ? "Session ready" : isSessionPaused ? "Session paused" : "Session active";
+  const sessionLabel = !hasStarted ? t("sessionScreen.ready") : isSessionPaused ? t("sessionScreen.paused") : t("sessionScreen.active");
   const sessionCopy = !hasStarted
-    ? "Preset, queue, dan filter sudah siap. Mulai sesi untuk menyalakan countdown fokus."
+    ? t("sessionScreen.readyCopy")
     : isSessionPaused
-      ? "Timer berhenti sementara. Queue dan filter tetap tersimpan."
-      : `${selectedPlaylist.title} berjalan untuk konteks ${selectedContext}.`;
+      ? t("sessionScreen.pausedCopy")
+      : t("sessionScreen.activeCopy", { playlist: selectedPlaylist.title, context: contextInfo.label });
 
   return (
     <AppPage showMiniPlayer={false}>
@@ -56,36 +66,36 @@ export function SessionScreen() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">{sessionLabel}</div>
-              <div className="mt-2 text-2xl font-black tracking-tight text-[#082B5C]">{activity} Mode</div>
+              <div className="mt-2 text-2xl font-black tracking-tight text-[#082B5C]">{t("sessionScreen.modeTitle", { activity: activityInfo.label })}</div>
               <p className="mt-2 text-sm leading-6 text-slate-500">{sessionCopy}</p>
             </div>
             <div className="grid h-24 w-24 shrink-0 place-items-center rounded-full" style={ring}>
               <div className="grid h-20 w-20 place-items-center rounded-full bg-white shadow-inner">
                 <div className="text-center">
                   <div className="text-xl font-black tracking-tight text-[#082B5C]">
-                    {!hasStarted ? `${queueInsights.readiness}%` : isSessionPaused ? "Pause" : sessionSummaryData.remainingLabel}
+                    {!hasStarted ? `${queueInsights.readiness}%` : isSessionPaused ? t("sessionScreen.paused") : sessionSummaryData.remainingLabel}
                   </div>
-                  <div className="text-[10px] text-slate-500">{hasStarted ? `${focusDuration}:00` : "queue ready"}</div>
+                  <div className="text-[10px] text-slate-500">{hasStarted ? `${focusDuration}:00` : t("sessionScreen.queueReady")}</div>
                 </div>
               </div>
             </div>
           </div>
           <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-            <SessionStat label={hasStarted ? "Sisa" : "Queue"} value={hasStarted ? `${queueList.length} lagu` : `${queueInsights.totalMinutes}m`} />
-            <SessionStat label={hasStarted ? "Skip" : "Health"} value={hasStarted ? `${sessionState.skipCount}` : `${queueInsights.readiness}%`} />
-            <SessionStat label="Setup" value={`${sessionState.setupSeconds} detik`} />
+            <SessionStat label={hasStarted ? t("sessionScreen.remaining") : t("sessionScreen.queue")} value={hasStarted ? t("sessionScreen.songs", { count: queueList.length }) : t("common.minutesShort", { value: queueInsights.totalMinutes })} />
+            <SessionStat label={hasStarted ? t("common.skip") : t("sessionScreen.health")} value={hasStarted ? `${sessionState.skipCount}` : `${queueInsights.readiness}%`} />
+            <SessionStat label={t("sessionScreen.setup")} value={t("sessionScreen.seconds", { value: sessionState.setupSeconds })} />
           </div>
         </div>
 
         <div className="mt-5">
-          <SectionTitle title="Now Playing" action={hasStarted ? "Tap to view" : "Preview"} />
+          <SectionTitle title={t("sessionScreen.nowPlaying")} action={hasStarted ? t("sessionScreen.tapToView") : t("sessionScreen.preview")} />
           <div className="mt-3">
             <NowPlayingBar />
           </div>
         </div>
 
         <div className="mt-6">
-          <SectionTitle title="Focus Setup" action="Saved" />
+          <SectionTitle title={t("sessionScreen.focusSetup")} action={t("common.saved")} />
           <div className="mt-3 grid grid-cols-2 gap-3">
             {toggles.map(({ key, label, note, icon: Icon }) => (
               <ToggleCard
@@ -106,7 +116,7 @@ export function SessionScreen() {
               <ListOrdered className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold text-[#082B5C]">Queue aman untuk fokus</div>
+              <div className="text-sm font-semibold text-[#082B5C]">{t("sessionScreen.queueSafe")}</div>
               <div className="mt-1 text-xs leading-5 text-slate-500">{queueInsights.note}</div>
             </div>
           </div>
@@ -119,7 +129,7 @@ export function SessionScreen() {
             onClick={() => setScreen("queue")}
             className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-[#BFD1EA] bg-white px-4 py-3 text-sm font-semibold text-[#082B5C]"
           >
-            Lihat Queue <ChevronRight className="h-4 w-4" />
+            {t("sessionScreen.viewQueue")} <ChevronRight className="h-4 w-4" />
           </button>
         </div>
       </div>
@@ -129,13 +139,13 @@ export function SessionScreen() {
           onClick={() => (hasStarted ? toggleSessionPause() : startSession())}
           className="flex-1 rounded-2xl bg-[#2F6DF6] px-4 py-4 text-sm font-semibold text-white shadow-lg"
         >
-          {!hasStarted ? "Mulai Session" : isSessionPaused ? "Resume Session" : "Pause Session"}
+          {!hasStarted ? t("sessionScreen.startSession") : isSessionPaused ? t("sessionScreen.resumeSession") : t("sessionScreen.pauseSession")}
         </button>
         <button
           onClick={() => (hasStarted ? finishSession() : setScreen("preset"))}
           className="rounded-2xl border border-[#BFD1EA] bg-white px-6 py-4 text-sm font-semibold text-[#082B5C]"
         >
-          {hasStarted ? "Selesai" : "Edit Preset"}
+          {hasStarted ? t("sessionScreen.finish") : t("sessionScreen.editPreset")}
         </button>
       </div>
     </AppPage>

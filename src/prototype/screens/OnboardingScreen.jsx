@@ -20,6 +20,10 @@ export function OnboardingScreen() {
     setAutoDownload,
     setActivity,
     savePreset,
+    t,
+    getActivityInfo,
+    getContextInfo,
+    getLyricLabel,
   } = usePrototype();
 
   function toggleActivity(item) {
@@ -39,21 +43,21 @@ export function OnboardingScreen() {
         <div className="flex items-center gap-3">
           <BrandMark small />
           <div>
-            <div className="text-2xl font-black tracking-tight text-[#082B5C]">Personalisasi</div>
-            <div className="text-sm text-slate-500">Atur baseline agar rekomendasi fokus lebih relevan.</div>
+            <div className="text-2xl font-black tracking-tight text-[#082B5C]">{t("onboarding.title")}</div>
+            <div className="text-sm text-slate-500">{t("onboarding.subtitle")}</div>
           </div>
         </div>
 
         <div className="mt-6 space-y-6">
           <div>
-            <SectionTitle title="Aktivitas utama" />
+            <SectionTitle title={t("onboarding.mainActivity")} />
             <div className="mt-3 grid grid-cols-2 gap-3">
               {Object.values(focusActivities).map((item) => (
                 <PreferenceChip
                   key={item.label}
                   active={selectedActivities.includes(item.label)}
-                  label={item.label}
-                  description={`${item.session} menit`}
+                  label={getActivityInfo(item.label).label}
+                  description={t("common.minutesLong", { value: item.session })}
                   icon={Sparkles}
                   onClick={() => toggleActivity(item.label)}
                 />
@@ -62,14 +66,14 @@ export function OnboardingScreen() {
           </div>
 
           <div>
-            <SectionTitle title="Kondisi paling sering" />
+            <SectionTitle title={t("onboarding.commonCondition")} />
             <div className="mt-3 grid grid-cols-2 gap-3">
               {contextOptions.map((item) => (
                 <PreferenceChip
                   key={item.id}
                   active={selectedContext === item.id}
-                  label={item.label}
-                  description={item.description}
+                  label={getContextInfo(item.id).label}
+                  description={getContextInfo(item.id).description}
                   icon={item.icon}
                   onClick={() => setSelectedContext(item.id)}
                 />
@@ -78,7 +82,7 @@ export function OnboardingScreen() {
           </div>
 
           <div>
-            <SectionTitle title="Preferensi lirik" />
+            <SectionTitle title={t("onboarding.lyricPreference")} />
             <div className="mt-3 grid grid-cols-3 gap-2">
               {lyricOptions.map((item) => (
                 <button
@@ -89,14 +93,14 @@ export function OnboardingScreen() {
                     lyricPreference === item ? "border-[#082B5C] bg-[#082B5C] text-white" : "border-slate-200 bg-white text-[#082B5C]"
                   )}
                 >
-                  {item}
+                  {getLyricLabel(item)}
                 </button>
               ))}
             </div>
           </div>
 
           <div>
-            <SectionTitle title="Durasi fokus default" />
+            <SectionTitle title={t("onboarding.defaultDuration")} />
             <div className="mt-3 grid grid-cols-4 gap-2">
               {durationOptions.map((item) => (
                 <button
@@ -107,7 +111,7 @@ export function OnboardingScreen() {
                     focusDuration === item ? "border-[#1C9AA0] bg-[#ECF7F8] text-[#082B5C]" : "border-slate-200 bg-white text-slate-500"
                   )}
                 >
-                  {item}m
+                  {t("common.minutesShort", { value: item })}
                 </button>
               ))}
             </div>
@@ -115,13 +119,13 @@ export function OnboardingScreen() {
 
           <ActionCard
             icon={Download}
-            title="Auto-download playlist fokus"
-            subtitle={autoDownload ? "Aktif saat perangkat terhubung Wi-Fi" : "Nonaktif untuk sementara"}
-            action={autoDownload ? "Aktif" : "Off"}
+            title={t("onboarding.autoDownloadTitle")}
+            subtitle={autoDownload ? t("onboarding.autoDownloadOn") : t("onboarding.autoDownloadOff")}
+            action={autoDownload ? t("common.active") : t("common.off")}
             onClick={() => setAutoDownload((prev) => !prev)}
           />
 
-          <PrimaryAction onClick={() => savePreset("home")}>Simpan dan lanjut</PrimaryAction>
+          <PrimaryAction onClick={() => savePreset("home")}>{t("onboarding.saveContinue")}</PrimaryAction>
         </div>
       </div>
     </div>

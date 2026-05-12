@@ -5,7 +5,7 @@ import { usePrototype } from "../../context/PrototypeProvider.jsx";
 import { cx } from "../../lib/format.js";
 
 export function NowPlayingBar({ floating = false }) {
-  const { setScreen, isMusicPlaying, setIsMusicPlaying, queueList } = usePrototype();
+  const { setScreen, isMusicPlaying, setIsMusicPlaying, queueList, t } = usePrototype();
   const current = queueList[0] ?? initialQueueTracks[0];
 
   return (
@@ -27,7 +27,7 @@ export function NowPlayingBar({ floating = false }) {
         <button
           onClick={() => setIsMusicPlaying((prev) => !prev)}
           className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white"
-          aria-label={isMusicPlaying ? "Pause music" : "Play music"}
+          aria-label={isMusicPlaying ? t("layout.pauseMusic") : t("layout.playMusic")}
         >
           {isMusicPlaying ? <Pause className="h-4 w-4" /> : <Play className="ml-0.5 h-4 w-4" />}
         </button>

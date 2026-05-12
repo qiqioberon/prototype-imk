@@ -24,9 +24,12 @@ export function PresetScreen() {
     setFilters,
     savePreset,
     startSession,
+    t,
+    getLyricLabel,
+    getPlaylistInfo,
   } = usePrototype();
 
-  const playlistChoices = playlists.filter((item) => item.activity === activity || item.offline).slice(0, 4);
+  const playlistChoices = playlists.filter((item) => item.activity === activity || item.offline).slice(0, 4).map((item) => getPlaylistInfo(item));
 
   return (
     <AppPage showMiniPlayer={false}>
@@ -34,34 +37,26 @@ export function PresetScreen() {
         <TopTabs />
 
         <div className="mt-5">
-          <div className="text-[28px] font-black tracking-tight text-[#082B5C]">Setup Preset</div>
-          <p className="mt-1 text-sm leading-6 text-slate-500">
-            Simpan ritual fokus agar sesi berikutnya langsung jalan tanpa setup ulang.
-          </p>
+          <div className="text-[28px] font-black tracking-tight text-[#082B5C]">{t("preset.title")}</div>
+          <p className="mt-1 text-sm leading-6 text-slate-500">{t("preset.description")}</p>
         </div>
 
         <div className="mt-5 rounded-[28px] bg-white p-4 shadow-sm ring-1 ring-slate-100">
-          <SectionTitle title="Playlist utama" action={selectedPlaylist.duration + "m"} />
+          <SectionTitle title={t("preset.mainPlaylist")} action={t("common.minutesShort", { value: selectedPlaylist.duration })} />
           <div className="mt-3 grid grid-cols-2 gap-3">
             {playlistChoices.map((item) => (
-              <PlaylistCard
-                key={item.id}
-                playlist={item}
-                compact
-                selected={selectedPlaylistId === item.id}
-                onClick={() => setSelectedPlaylistId(item.id)}
-              />
+              <PlaylistCard key={item.id} playlist={item} compact selected={selectedPlaylistId === item.id} onClick={() => setSelectedPlaylistId(item.id)} />
             ))}
           </div>
         </div>
 
         <div className="mt-5 rounded-[28px] bg-white p-4 shadow-sm ring-1 ring-slate-100">
-          <SectionTitle title="Kontrol sesi" />
+          <SectionTitle title={t("preset.sessionControls")} />
           <div className="mt-4 space-y-4">
             <div>
               <div className="mb-2 flex items-center justify-between text-sm">
-                <span className="font-semibold text-[#082B5C]">Durasi fokus</span>
-                <span className="font-black text-[#1C9AA0]">{focusDuration} menit</span>
+                <span className="font-semibold text-[#082B5C]">{t("preset.focusDuration")}</span>
+                <span className="font-black text-[#1C9AA0]">{t("common.minutesLong", { value: focusDuration })}</span>
               </div>
               <div className="grid grid-cols-4 gap-2">
                 {durationOptions.map((item) => (
@@ -73,7 +68,7 @@ export function PresetScreen() {
                       focusDuration === item ? "border-[#082B5C] bg-[#082B5C] text-white" : "border-slate-200 bg-white text-slate-500"
                     )}
                   >
-                    {item}m
+                    {t("common.minutesShort", { value: item })}
                   </button>
                 ))}
               </div>
@@ -81,7 +76,7 @@ export function PresetScreen() {
 
             <div>
               <div className="mb-2 flex items-center justify-between text-sm">
-                <span className="font-semibold text-[#082B5C]">Volume awal</span>
+                <span className="font-semibold text-[#082B5C]">{t("preset.initialVolume")}</span>
                 <span className="font-black text-[#1C9AA0]">{volumeLevel}%</span>
               </div>
               <div className="flex items-center gap-3 rounded-2xl bg-[#F7FAFC] p-3 ring-1 ring-slate-100">
@@ -107,7 +102,7 @@ export function PresetScreen() {
                     lyricPreference === item ? "border-[#1C9AA0] bg-[#ECF7F8] text-[#082B5C]" : "border-slate-200 bg-white text-slate-500"
                   )}
                 >
-                  {item}
+                  {getLyricLabel(item)}
                 </button>
               ))}
             </div>
@@ -116,10 +111,10 @@ export function PresetScreen() {
 
         <div className="mt-5 space-y-3">
           {[
-            { key: "playlist", title: "Preset queue", note: "urutan lagu tersimpan", icon: ListOrdered },
-            { key: "lyrics", title: "Filter lirik", note: lyricPreference, icon: Filter },
-            { key: "noise", title: "Noise cancellation", note: "aktif saat headset tersambung", icon: Headphones },
-            { key: "offline", title: "Offline fallback", note: autoDownload ? "download otomatis aktif" : "manual download", icon: WifiOff },
+            { key: "playlist", title: t("preset.presetQueue"), note: t("preset.presetQueueNote"), icon: ListOrdered },
+            { key: "lyrics", title: t("preset.lyricFilter"), note: getLyricLabel(lyricPreference), icon: Filter },
+            { key: "noise", title: t("preset.noiseCancellation"), note: t("preset.noiseNote"), icon: Headphones },
+            { key: "offline", title: t("preset.offlineFallback"), note: autoDownload ? t("preset.offlineOn") : t("preset.offlineOff"), icon: WifiOff },
           ].map((item) => (
             <ToggleCard
               key={item.key}
@@ -138,10 +133,10 @@ export function PresetScreen() {
 
       <div className="absolute bottom-[104px] left-5 right-5 z-20 grid grid-cols-2 gap-3">
         <PrimaryAction variant="secondary" icon={Save} onClick={() => savePreset("home")}>
-          Simpan
+          {t("preset.save")}
         </PrimaryAction>
         <PrimaryAction icon={Play} onClick={() => startSession()}>
-          Mulai
+          {t("preset.start")}
         </PrimaryAction>
       </div>
     </AppPage>

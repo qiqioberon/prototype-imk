@@ -1,6 +1,8 @@
 import { referenceImages } from "../../data.js";
+import { usePrototype } from "../../context/PrototypeProvider.jsx";
 
 export function ReferenceStrip() {
+  const { t } = usePrototype();
   const refs = [
     { label: "Splash", image: referenceImages.splash },
     { label: "Login", image: referenceImages.login },
@@ -10,7 +12,7 @@ export function ReferenceStrip() {
 
   return (
     <div className="mt-6 rounded-3xl border border-slate-200 bg-white p-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Local references</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">{t("layout.localReferences")}</p>
       <div className="mt-3 grid grid-cols-4 gap-2">
         {refs.map((item) => (
           <div key={item.label} className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">

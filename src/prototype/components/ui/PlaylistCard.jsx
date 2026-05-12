@@ -1,8 +1,11 @@
 import { Music4 } from "lucide-react";
 
+import { usePrototype } from "../../context/PrototypeProvider.jsx";
 import { cx } from "../../lib/format.js";
 
 export function PlaylistCard({ playlist, selected = false, compact = false, match, insight, onClick, onUse, onQueue, onOffline }) {
+  const { t } = usePrototype();
+
   return (
     <div className={cx("rounded-[22px] bg-white p-2 shadow-sm ring-1", selected ? "ring-[#1C9AA0]" : "ring-slate-100")}>
       <button onClick={onClick} className="w-full text-left">
@@ -11,7 +14,7 @@ export function PlaylistCard({ playlist, selected = false, compact = false, matc
           <Music4 className="absolute bottom-3 left-3 h-5 w-5 text-[#082B5C]" />
           {typeof match === "number" ? (
             <div className="absolute left-3 top-3 rounded-full bg-[#082B5C]/85 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white">
-              {match}% fit
+              {t("musicScreen.fit", { value: match })}
             </div>
           ) : null}
           {playlist.offline ? (
@@ -34,13 +37,13 @@ export function PlaylistCard({ playlist, selected = false, compact = false, matc
       {!compact ? (
         <div className="mt-2 grid grid-cols-3 gap-2">
           <button onClick={onUse} className="rounded-xl bg-[#082B5C] px-2 py-2 text-[11px] font-semibold text-white">
-            Pakai
+            {t("musicScreen.use")}
           </button>
           <button onClick={onQueue} className="rounded-xl bg-[#ECF7F8] px-2 py-2 text-[11px] font-semibold text-[#1C9AA0]">
-            Queue
+            {t("musicScreen.addQueue")}
           </button>
           <button onClick={onOffline} className="rounded-xl bg-[#EEF4FF] px-2 py-2 text-[11px] font-semibold text-[#2F6DF6]">
-            Offline
+            {t("musicScreen.offline")}
           </button>
         </div>
       ) : null}

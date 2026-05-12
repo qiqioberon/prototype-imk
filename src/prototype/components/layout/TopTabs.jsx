@@ -3,8 +3,8 @@ import { Avatar } from "./Avatar.jsx";
 import { Pill } from "./Pill.jsx";
 
 export function TopTabs() {
-  const { screen, setScreen } = usePrototype();
-  const activeHome = ["home", "preset", "onboarding"].includes(screen);
+  const { screen, setScreen, t } = usePrototype();
+  const activeHome = ["home", "preset", "onboarding", "profile"].includes(screen);
   const activeSession = ["session", "player", "review"].includes(screen);
 
   return (
@@ -12,16 +12,16 @@ export function TopTabs() {
       <div className="grid min-w-0 flex-1 grid-cols-3 gap-2">
         <Pill active={activeHome} onClick={() => setScreen("home")}>
           <span>
-            Quick
+            {t("layout.quickFocus").split(" ")[0]}
             <br />
-            Focus
+            {t("layout.quickFocus").split(" ").slice(1).join(" ") || t("layout.quickFocus")}
           </span>
         </Pill>
         <Pill active={screen === "music"} onClick={() => setScreen("music")}>
-          Music
+          {t("layout.music")}
         </Pill>
         <Pill active={activeSession} onClick={() => setScreen("session")}>
-          Session
+          {t("layout.session")}
         </Pill>
       </div>
       <Avatar />

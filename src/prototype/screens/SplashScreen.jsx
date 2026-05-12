@@ -2,7 +2,7 @@ import { usePrototype } from "../context/PrototypeProvider.jsx";
 import { BrandMark, StatusBar } from "../components/layout/index.js";
 
 export function SplashScreen() {
-  const { setScreen } = usePrototype();
+  const { setScreen, t } = usePrototype();
   return (
     <div className="relative h-full overflow-hidden bg-[linear-gradient(180deg,#99ECF5_0%,#F7FCFE_22%,#FFFFFF_100%)]">
       <StatusBar />
@@ -15,7 +15,7 @@ export function SplashScreen() {
           <div className="text-[3rem] font-black leading-none tracking-tight text-[#082B5C]">
             Focus<span className="text-[#1C9AA0]">Tunes</span>
           </div>
-          <p className="mt-1 text-sm font-semibold text-[#0d5970]">Focus Flow Finish</p>
+          <p className="mt-1 text-sm font-semibold text-[#0d5970]">{t("splash.tagline")}</p>
         </div>
 
         <div className="relative mt-auto flex w-full justify-center">
@@ -36,7 +36,7 @@ export function SplashScreen() {
           onClick={() => setScreen("login")}
           className="mt-8 w-full rounded-2xl bg-[#082B5C] px-5 py-4 text-base font-semibold text-white shadow-[0_12px_30px_rgba(8,43,92,0.28)]"
         >
-          Mulai
+          {t("splash.start")}
         </button>
       </div>
     </div>

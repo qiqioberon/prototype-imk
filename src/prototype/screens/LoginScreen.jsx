@@ -5,7 +5,7 @@ import { usePrototype } from "../context/PrototypeProvider.jsx";
 import { BrandMark, StatusBar } from "../components/layout/index.js";
 
 export function LoginScreen() {
-  const { setScreen } = usePrototype();
+  const { setScreen, showToast, t } = usePrototype();
   return (
     <div className="h-full overflow-hidden bg-[linear-gradient(180deg,#99ECF5_0%,#F7FCFE_18%,#FFFFFF_32%)] text-[#082B5C]">
       <StatusBar />
@@ -16,7 +16,7 @@ export function LoginScreen() {
             <div className="text-4xl font-black tracking-tight text-[#082B5C]">
               Focus<span className="text-[#1C9AA0]">Tunes</span>
             </div>
-            <div className="mt-1 text-xs font-semibold text-slate-500">Focus Flow Finish</div>
+            <div className="mt-1 text-xs font-semibold text-slate-500">{t("login.brandTagline")}</div>
           </div>
           <div className="mt-3 flex items-end gap-[4px] opacity-40">
             {[8, 14, 20, 26, 32, 26, 20, 14, 8].map((h, i) => (
@@ -26,13 +26,13 @@ export function LoginScreen() {
         </div>
 
         <div className="mt-7">
-          <h1 className="text-[2.1rem] font-black leading-tight tracking-tight text-[#082B5C]">Masuk ke akun Anda</h1>
-          <p className="mt-2 text-sm text-slate-600">Masuk untuk menyimpan preset fokus dan riwayat sesi.</p>
+          <h1 className="text-[2.1rem] font-black leading-tight tracking-tight text-[#082B5C]">{t("login.title")}</h1>
+          <p className="mt-2 text-sm text-slate-600">{t("login.description")}</p>
         </div>
 
         <div className="mt-6 space-y-4">
-          <Field label="Email" value="user@gmail.com" />
-          <Field label="Password" value="rahasia123" secure />
+          <Field label={t("login.email")} value="user@gmail.com" />
+          <Field label={t("login.password")} value="rahasia123" secure />
         </div>
 
         <div className="mt-4 flex items-center justify-between text-sm text-slate-500">
@@ -40,34 +40,39 @@ export function LoginScreen() {
             <span className="grid h-4 w-4 place-items-center rounded-[4px] border border-[#1C9AA0] bg-[#ECF7F8]">
               <Check className="h-3 w-3 text-[#1C9AA0]" />
             </span>
-            Remember me
+            {t("login.rememberMe")}
           </label>
-          <button className="font-medium text-[#4B76F1]">Forgot password?</button>
+          <button onClick={() => showToast("login.forgotToastTitle", "login.forgotToastDescription")} className="font-medium text-[#4B76F1]">
+            {t("login.forgotPassword")}
+          </button>
         </div>
 
         <button
           onClick={() => setScreen("onboarding")}
           className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl border border-[#265CF2] bg-[#082B5C] px-5 py-4 text-lg font-semibold text-white shadow-[0_12px_28px_rgba(8,43,92,0.24)]"
         >
-          Masuk
+          {t("login.login")}
           <ArrowRight className="h-5 w-5" />
         </button>
 
         <div className="mt-6 flex items-center gap-4">
           <div className="h-px flex-1 bg-slate-200" />
-          <span className="text-xs font-medium text-slate-400">Atau</span>
+          <span className="text-xs font-medium text-slate-400">{t("login.divider")}</span>
           <div className="h-px flex-1 bg-slate-200" />
         </div>
 
-        <button className="mt-4 flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-base font-semibold text-slate-700 shadow-sm">
+        <button
+          onClick={() => showToast("login.googleToastTitle", "login.googleToastDescription")}
+          className="mt-4 flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-base font-semibold text-slate-700 shadow-sm"
+        >
           <GoogleIcon />
-          Lanjutkan dengan Google
+          {t("login.google")}
         </button>
 
         <p className="mt-6 text-center text-sm text-slate-500">
-          Belum punya akun?{" "}
-          <button onClick={() => setScreen("register")} className="font-semibold text-[#1C9AA0]">
-            Daftar
+          {t("login.noAccount")}{" "}
+          <button onClick={() => showToast("login.registerToastTitle", "login.registerToastDescription")} className="font-semibold text-[#1C9AA0]">
+            {t("login.register")}
           </button>
         </p>
       </div>

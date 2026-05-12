@@ -1,34 +1,38 @@
 import { Ban, ChartNoAxesColumn, CheckCircle2, ChevronRight, Clock3, ShieldCheck, Sparkles, WifiOff } from "lucide-react";
 
-import { focusInsights, weeklyBars } from "../../data.js";
+import { weeklyBars } from "../../data.js";
 import { usePrototype } from "../../context/PrototypeProvider.jsx";
 import { AppPage, Avatar, TopTabs } from "../../components/layout/index.js";
 import { ActionCard, SectionTitle, StatBlock } from "../../components/ui/index.js";
 
 export function StatsScreen() {
-  const { blockedTracks, selectedContext, activity, autoDownload, focusStats, setScreen } = usePrototype();
+  const { blockedTracks, selectedContext, activity, autoDownload, focusStats, setScreen, t, getActivityInfo, getContextInfo } = usePrototype();
   const totalActivityMinutes = Object.values(focusStats.activityMinutes).reduce((sum, value) => sum + value, 0);
   const activityStats = Object.entries(focusStats.activityMinutes)
     .filter(([, value]) => value > 0)
     .map(([label, value]) => ({
-      label,
-      value: `${(value / 60).toFixed(1)}h`,
+      label: getActivityInfo(label).label,
+      value: t("common.hoursValue", { value: (value / 60).toFixed(1) }),
       width: Math.round((value / Math.max(1, totalActivityMinutes)) * 100),
     }))
     .sort((left, right) => right.width - left.width);
   const review = focusStats.lastSessionSummary;
   const statsInsights = [
     {
-      title: "Last session",
-      value: `${review.duration} • ${review.completionRate}%`,
-      note: `${review.skipCount} skip, setup ${review.setupSeconds} detik.`,
+      title: t("statsScreen.lastSession"),
+      value: `${t("common.minutesLong", { value: review.durationMinutes })} - ${review.completionRate}%`,
+      note: t("statsScreen.lastSessionNote", { skipCount: review.skipCount, setupSeconds: review.setupSeconds }),
     },
     {
-      title: "Preset terakhir",
+      title: t("statsScreen.lastPreset"),
       value: review.savedSetup,
-      note: `Track review: ${review.blockedSuggestion}`,
+      note: t("statsScreen.trackReview", { track: review.blockedSuggestion }),
     },
-    ...focusInsights,
+    {
+      title: t("statsScreen.actionableTitle"),
+      value: t("statsScreen.actionableValue"),
+      note: t("statsScreen.actionableNote"),
+    },
   ];
 
   return (
@@ -38,24 +42,24 @@ export function StatsScreen() {
 
         <div className="mt-5 flex items-center justify-between">
           <div>
-            <div className="text-[28px] font-black tracking-tight text-[#082B5C]">Focus Stats</div>
-            <div className="text-sm text-slate-500">Insight untuk memperbaiki preset berikutnya</div>
+            <div className="text-[28px] font-black tracking-tight text-[#082B5C]">{t("statsScreen.title")}</div>
+            <div className="text-sm text-slate-500">{t("statsScreen.description")}</div>
           </div>
           <Avatar />
         </div>
 
         <div className="mt-5 grid grid-cols-2 gap-3">
-          <StatBlock label="Focus Streak" value={`${focusStats.streakDays} hari`} icon={CheckCircle2} />
-          <StatBlock label="Total Session" value={`${focusStats.completedSessions} sesi`} icon={Clock3} />
-          <StatBlock label="Distraksi Turun" value={`${focusStats.distractionDelta}%`} icon={ShieldCheck} />
-          <StatBlock label="Offline Success" value={`${autoDownload ? focusStats.offlineSuccessRate : Math.max(72, focusStats.offlineSuccessRate - 11)}%`} icon={WifiOff} />
+          <StatBlock label={t("statsScreen.focusStreak")} value={t("common.daysCount", { count: focusStats.streakDays })} icon={CheckCircle2} />
+          <StatBlock label={t("statsScreen.totalSession")} value={t("common.sessionsCount", { count: focusStats.completedSessions })} icon={Clock3} />
+          <StatBlock label={t("statsScreen.distractionDown")} value={`${focusStats.distractionDelta}%`} icon={ShieldCheck} />
+          <StatBlock label={t("statsScreen.offlineSuccess")} value={`${autoDownload ? focusStats.offlineSuccessRate : Math.max(72, focusStats.offlineSuccessRate - 11)}%`} icon={WifiOff} />
         </div>
 
         <div className="mt-5 rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-slate-100">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm font-semibold text-[#082B5C]">Weekly Focus Flow</div>
-              <div className="text-xs text-slate-400">Jam fokus efektif per hari</div>
+              <div className="text-sm font-semibold text-[#082B5C]">{t("statsScreen.weeklyFlow")}</div>
+              <div className="text-xs text-slate-400">{t("statsScreen.weeklyFlowSub")}</div>
             </div>
             <ChartNoAxesColumn className="h-5 w-5 text-[#1C9AA0]" />
           </div>
@@ -73,14 +77,14 @@ export function StatsScreen() {
           </div>
 
           <div className="mt-5 grid grid-cols-3 gap-2">
-            <StatsMiniCard label="Total" value={`${(focusStats.totalFocusMinutes / 60).toFixed(1)}h`} />
-            <StatsMiniCard label="Best" value={focusInsights[0].value} />
-            <StatsMiniCard label="Context" value={selectedContext} />
+            <StatsMiniCard label={t("statsScreen.total")} value={t("common.hoursValue", { value: (focusStats.totalFocusMinutes / 60).toFixed(1) })} />
+            <StatsMiniCard label={t("statsScreen.best")} value="20.00-22.00" />
+            <StatsMiniCard label={t("statsScreen.context")} value={getContextInfo(selectedContext).label} />
           </div>
         </div>
 
         <div className="mt-5 rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-slate-100">
-          <SectionTitle title="Distribusi aktivitas" />
+          <SectionTitle title={t("statsScreen.activityDistribution")} />
           <div className="mt-4 space-y-3">
             {activityStats.map((item) => (
               <div key={item.label}>
@@ -100,7 +104,13 @@ export function StatsScreen() {
           {statsInsights.map((item) => (
             <InsightCard key={item.title} title={item.title} value={item.value} note={item.note} />
           ))}
-          <ActionCard icon={Ban} title="Blocked tracks" subtitle={`${blockedTracks.length} lagu tidak muncul di ${activity} Mode`} action="Review" onClick={() => setScreen("queue")} />
+          <ActionCard
+            icon={Ban}
+            title={t("statsScreen.blockedTracks")}
+            subtitle={t("statsScreen.blockedSubtitle", { count: blockedTracks.length, activity: getActivityInfo(activity).label })}
+            action={t("common.review")}
+            onClick={() => setScreen("queue")}
+          />
         </div>
       </div>
     </AppPage>

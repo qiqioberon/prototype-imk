@@ -3,7 +3,7 @@ import { usePrototype } from "../../context/PrototypeProvider.jsx";
 import { cx } from "../../lib/format.js";
 
 export function ScreenSwitcher() {
-  const { screen, setScreen } = usePrototype();
+  const { screen, setScreen, t } = usePrototype();
   const items = Object.entries(screenLabels);
 
   return (
@@ -19,7 +19,7 @@ export function ScreenSwitcher() {
               : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
           )}
         >
-          {label}
+          {t(`screenLabels.${key}`) === `screenLabels.${key}` ? label : t(`screenLabels.${key}`)}
         </button>
       ))}
     </div>
