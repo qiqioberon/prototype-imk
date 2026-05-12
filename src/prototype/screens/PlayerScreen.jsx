@@ -10,12 +10,19 @@ export function PlayerScreen() {
     setScreen,
     isMusicPlaying,
     setIsMusicPlaying,
+    isCurrentTrackLiked,
+    isShuffleEnabled,
+    repeatMode,
     queueList,
     selectedPlaylist,
     currentTrack,
     sessionProgress,
     sessionState,
     rotateQueue,
+    toggleLikedTrack,
+    toggleShuffleMode,
+    cycleRepeatMode,
+    shareCurrentTrack,
     skipCurrentTrack,
   } = usePrototype();
   const current = currentTrack ?? queueList[0] ?? initialQueueTracks[0];
@@ -25,6 +32,7 @@ export function PlayerScreen() {
   const remainingTrackSeconds = Math.max(0, trackLengthSeconds - elapsedTrackSeconds);
   const lyricHeadline = current.focusSafe === false ? "Energi sedang tinggi" : "Focus-safe track";
   const lyricBody = current.focusSafe === false ? "Cocok untuk break singkat atau sesi ride." : "Aman untuk writing, study, dan coding mode.";
+  const repeatLabel = repeatMode === "all" ? "Ulangi playlist" : repeatMode === "one" ? "Ulangi lagu ini" : "Ulangi mati";
 
   return (
     <div className="h-full overflow-hidden bg-[#19191D] text-white">
@@ -56,8 +64,12 @@ export function PlayerScreen() {
               <div className="truncate text-lg font-black">{current.title}</div>
               <div className="mt-1 truncate text-sm text-white/55">{current.artist}</div>
             </div>
-            <button className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-white/80">
-              <Heart className="h-5 w-5" />
+            <button
+              onClick={() => toggleLikedTrack(current)}
+              className={`grid h-10 w-10 shrink-0 place-items-center rounded-full transition ${isCurrentTrackLiked ? "bg-white text-[#B91C1C]" : "text-white/80"}`}
+              aria-label={isCurrentTrackLiked ? "Hapus dari favorit" : "Simpan ke favorit"}
+            >
+              <Heart className="h-5 w-5" fill={isCurrentTrackLiked ? "currentColor" : "none"} />
             </button>
           </div>
 
@@ -72,7 +84,7 @@ export function PlayerScreen() {
           </div>
 
           <div className="mt-7 flex items-center justify-between">
-            <button className="text-white/75">
+            <button onClick={toggleShuffleMode} className={isShuffleEnabled ? "text-emerald-400" : "text-white/75"} aria-label="Mode acak">
               <Shuffle className="h-5 w-5" />
             </button>
             <button onClick={() => rotateQueue("previous")} className="text-white">
@@ -87,9 +99,18 @@ export function PlayerScreen() {
             <button onClick={skipCurrentTrack} className="text-white">
               <SkipForward className="h-7 w-7" />
             </button>
-            <button className="text-emerald-400">
+            <button
+              onClick={cycleRepeatMode}
+              className={repeatMode === "off" ? "text-white/75" : "text-emerald-400"}
+              aria-label="Mode ulangi"
+            >
               <Repeat2 className="h-5 w-5" />
             </button>
+          </div>
+
+          <div className="mt-3 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.14em]">
+            <span className={isShuffleEnabled ? "text-emerald-400" : "text-white/45"}>{isShuffleEnabled ? "Acak aktif" : "Acak mati"}</span>
+            <span className="text-white/45">{repeatLabel}</span>
           </div>
 
           <div className="mt-7 flex items-center justify-between text-white/70">
@@ -97,7 +118,9 @@ export function PlayerScreen() {
               <Volume2 className="h-4 w-4" /> BEATSPILL+
             </div>
             <div className="flex items-center gap-5">
-              <Share2 className="h-5 w-5" />
+              <button onClick={() => shareCurrentTrack(current)} aria-label="Bagikan track">
+                <Share2 className="h-5 w-5" />
+              </button>
               <button onClick={() => setScreen("queue")}>
                 <ListOrdered className="h-5 w-5" />
               </button>

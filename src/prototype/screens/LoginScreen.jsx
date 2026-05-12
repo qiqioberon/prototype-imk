@@ -1,13 +1,117 @@
-import { useState } from "react";
-import { ArrowRight, Check, Eye, EyeOff } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowRight, Check, Eye, EyeOff, LoaderCircle, Mail, ShieldCheck, X } from "lucide-react";
 
 import { usePrototype } from "../context/PrototypeProvider.jsx";
+import { cx } from "../lib/format.js";
 import { BrandMark, StatusBar } from "../components/layout/index.js";
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const LOGIN_DELAY_MS = 700;
+const GOOGLE_DELAY_MS = 900;
+const RESET_DELAY_MS = 800;
+
 export function LoginScreen() {
-  const { setScreen } = usePrototype();
+  const { setScreen, showToast } = usePrototype();
+  const [email, setEmail] = useState("user@gmail.com");
+  const [password, setPassword] = useState("rahasia123");
+  const [rememberMe, setRememberMe] = useState(true);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [isLoginLoading, setIsLoginLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isResetOpen, setIsResetOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState("user@gmail.com");
+  const [resetError, setResetError] = useState("");
+  const [resetStatus, setResetStatus] = useState("idle");
+  const [isResetSubmitting, setIsResetSubmitting] = useState(false);
+  const timeoutRefs = useRef([]);
+
+  useEffect(() => {
+    return () => {
+      timeoutRefs.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    };
+  }, []);
+
+  function schedule(callback, delay) {
+    const timeoutId = window.setTimeout(() => {
+      timeoutRefs.current = timeoutRefs.current.filter((id) => id !== timeoutId);
+      callback();
+    }, delay);
+
+    timeoutRefs.current.push(timeoutId);
+  }
+
+  function handleLoginSubmit(event) {
+    event.preventDefault();
+
+    const nextErrors = validateLoginFields(email, password);
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
+      showToast("Login belum valid", "Periksa lagi email dan password Anda.");
+      return;
+    }
+
+    setFieldErrors({});
+    setIsLoginLoading(true);
+
+    schedule(() => {
+      setIsLoginLoading(false);
+      showToast(
+        "Login berhasil",
+        rememberMe ? "Selamat datang kembali. Akun Anda tetap diingat pada perangkat ini." : "Selamat datang kembali di FocusTunes."
+      );
+      setScreen("home");
+    }, LOGIN_DELAY_MS);
+  }
+
+  function handleGoogleLogin() {
+    if (isLoginLoading || isGoogleLoading) return;
+
+    setFieldErrors({});
+    setIsGoogleLoading(true);
+
+    schedule(() => {
+      setIsGoogleLoading(false);
+      showToast("Google terhubung", "Login Google berhasil dan Anda masuk ke Home.");
+      setScreen("home");
+    }, GOOGLE_DELAY_MS);
+  }
+
+  function openResetSheet() {
+    setResetEmail(email.trim() || "user@gmail.com");
+    setResetError("");
+    setResetStatus("idle");
+    setIsResetOpen(true);
+  }
+
+  function closeResetSheet() {
+    if (isResetSubmitting) return;
+
+    setIsResetOpen(false);
+    setResetError("");
+    setResetStatus("idle");
+  }
+
+  function handleResetSubmit(event) {
+    event.preventDefault();
+
+    const normalizedEmail = resetEmail.trim();
+    if (!isValidEmail(normalizedEmail)) {
+      setResetError("Masukkan email yang valid untuk menerima link reset.");
+      return;
+    }
+
+    setResetError("");
+    setIsResetSubmitting(true);
+
+    schedule(() => {
+      setIsResetSubmitting(false);
+      setResetStatus("sent");
+      showToast("Link reset dikirim", `Instruksi reset password sudah dikirim ke ${normalizedEmail}.`);
+    }, RESET_DELAY_MS);
+  }
+
   return (
-    <div className="h-full overflow-hidden bg-[linear-gradient(180deg,#99ECF5_0%,#F7FCFE_18%,#FFFFFF_32%)] text-[#082B5C]">
+    <div className="relative h-full overflow-hidden bg-[linear-gradient(180deg,#99ECF5_0%,#F7FCFE_18%,#FFFFFF_32%)] text-[#082B5C]">
       <StatusBar />
       <div className="h-full overflow-y-auto px-6 pb-10 pt-8">
         <div className="flex flex-col items-center">
@@ -30,28 +134,75 @@ export function LoginScreen() {
           <p className="mt-2 text-sm text-slate-600">Masuk untuk menyimpan preset fokus dan riwayat sesi.</p>
         </div>
 
-        <div className="mt-6 space-y-4">
-          <Field label="Email" value="user@gmail.com" />
-          <Field label="Password" value="rahasia123" secure />
-        </div>
+        <form className="mt-6" onSubmit={handleLoginSubmit}>
+          <div className="space-y-4">
+            <Field
+              label="Email"
+              type="email"
+              value={email}
+              autoComplete="email"
+              placeholder="nama@email.com"
+              error={fieldErrors.email}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                setFieldErrors((previous) => ({ ...previous, email: "" }));
+              }}
+            />
+            <Field
+              label="Password"
+              value={password}
+              autoComplete="current-password"
+              placeholder="Masukkan password"
+              secure
+              error={fieldErrors.password}
+              onChange={(event) => {
+                setPassword(event.target.value);
+                setFieldErrors((previous) => ({ ...previous, password: "" }));
+              }}
+            />
+          </div>
 
-        <div className="mt-4 flex items-center justify-between text-sm text-slate-500">
-          <label className="flex items-center gap-2">
-            <span className="grid h-4 w-4 place-items-center rounded-[4px] border border-[#1C9AA0] bg-[#ECF7F8]">
-              <Check className="h-3 w-3 text-[#1C9AA0]" />
-            </span>
-            Remember me
-          </label>
-          <button className="font-medium text-[#4B76F1]">Forgot password?</button>
-        </div>
+          <div className="mt-4 flex items-center justify-between text-sm text-slate-500">
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={() => setRememberMe((previous) => !previous)}
+                className="sr-only"
+              />
+              <span
+                className={cx(
+                  "grid h-4 w-4 place-items-center rounded-[4px] border transition",
+                  rememberMe ? "border-[#1C9AA0] bg-[#ECF7F8]" : "border-slate-300 bg-white"
+                )}
+              >
+                {rememberMe ? <Check className="h-3 w-3 text-[#1C9AA0]" /> : null}
+              </span>
+              Ingat saya
+            </label>
+            <button type="button" onClick={openResetSheet} className="font-medium text-[#4B76F1]">
+              Lupa password?
+            </button>
+          </div>
 
-        <button
-          onClick={() => setScreen("onboarding")}
-          className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl border border-[#265CF2] bg-[#082B5C] px-5 py-4 text-lg font-semibold text-white shadow-[0_12px_28px_rgba(8,43,92,0.24)]"
-        >
-          Masuk
-          <ArrowRight className="h-5 w-5" />
-        </button>
+          <button
+            type="submit"
+            disabled={isLoginLoading || isGoogleLoading}
+            className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl border border-[#265CF2] bg-[#082B5C] px-5 py-4 text-lg font-semibold text-white shadow-[0_12px_28px_rgba(8,43,92,0.24)] disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isLoginLoading ? (
+              <>
+                <LoaderCircle className="h-5 w-5 animate-spin" />
+                Memverifikasi akun...
+              </>
+            ) : (
+              <>
+                Masuk
+                <ArrowRight className="h-5 w-5" />
+              </>
+            )}
+          </button>
+        </form>
 
         <div className="mt-6 flex items-center gap-4">
           <div className="h-px flex-1 bg-slate-200" />
@@ -59,18 +210,38 @@ export function LoginScreen() {
           <div className="h-px flex-1 bg-slate-200" />
         </div>
 
-        <button className="mt-4 flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-base font-semibold text-slate-700 shadow-sm">
-          <GoogleIcon />
-          Lanjutkan dengan Google
+        <button
+          type="button"
+          onClick={handleGoogleLogin}
+          disabled={isLoginLoading || isGoogleLoading}
+          className="mt-4 flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-base font-semibold text-slate-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          {isGoogleLoading ? <LoaderCircle className="h-5 w-5 animate-spin text-[#1C9AA0]" /> : <GoogleIcon />}
+          {isGoogleLoading ? "Menghubungkan akun Google..." : "Lanjutkan dengan Google"}
         </button>
 
         <p className="mt-6 text-center text-sm text-slate-500">
           Belum punya akun?{" "}
-          <button onClick={() => setScreen("register")} className="font-semibold text-[#1C9AA0]">
+          <button type="button" onClick={() => setScreen("register")} className="font-semibold text-[#1C9AA0]">
             Daftar
           </button>
         </p>
       </div>
+
+      {isResetOpen ? (
+        <ResetPasswordSheet
+          email={resetEmail}
+          error={resetError}
+          isSubmitting={isResetSubmitting}
+          isSuccess={resetStatus === "sent"}
+          onChange={(event) => {
+            setResetEmail(event.target.value);
+            setResetError("");
+          }}
+          onClose={closeResetSheet}
+          onSubmit={handleResetSubmit}
+        />
+      ) : null}
     </div>
   );
 }
@@ -86,20 +257,148 @@ function GoogleIcon() {
   );
 }
 
-function Field({ label, value, secure = false }) {
+function Field({
+  label,
+  value,
+  onChange,
+  type = "text",
+  secure = false,
+  error = "",
+  placeholder = "",
+  autoComplete = "off",
+}) {
   const [shown, setShown] = useState(false);
-  const displayValue = secure && !shown ? "••••••••" : value;
+  const inputType = secure ? (shown ? "text" : "password") : type;
+
   return (
-    <div className="flex items-center rounded-2xl border border-[#C8E8EB] bg-white px-4 py-3 shadow-sm focus-within:border-[#1C9AA0] focus-within:ring-2 focus-within:ring-[#1C9AA0]/10">
-      <div className="flex-1">
-        <div className="text-xs text-slate-400">{label}</div>
-        <div className="mt-0.5 text-base text-slate-800">{displayValue}</div>
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-[#082B5C]">{label}</span>
+      <div
+        className={cx(
+          "flex items-center rounded-2xl border bg-white px-4 py-3 shadow-sm transition",
+          error ? "border-rose-300 ring-2 ring-rose-100" : "border-[#C8E8EB] focus-within:border-[#1C9AA0] focus-within:ring-2 focus-within:ring-[#1C9AA0]/10"
+        )}
+      >
+        <input
+          type={inputType}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          className="w-full bg-transparent text-base text-slate-800 outline-none placeholder:text-slate-400"
+        />
+        {secure ? (
+          <button type="button" onClick={() => setShown((previous) => !previous)} className="ml-2 text-slate-400">
+            {shown ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        ) : null}
       </div>
-      {secure && (
-        <button onClick={() => setShown((s) => !s)} className="ml-2 text-slate-400">
-          {shown ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-        </button>
-      )}
+      {error ? <p className="mt-2 text-xs font-medium text-rose-500">{error}</p> : null}
+    </label>
+  );
+}
+
+function ResetPasswordSheet({ email, error, isSubmitting, isSuccess, onChange, onClose, onSubmit }) {
+  return (
+    <div className="absolute inset-0 z-30 flex items-end bg-[#082B5C]/30 px-4 pb-6 pt-20 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full rounded-[30px] bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-lg font-black text-[#082B5C]">{isSuccess ? "Cek email Anda" : "Reset password"}</div>
+            <p className="mt-1 text-sm text-slate-500">
+              {isSuccess ? "Link reset sudah dikirim. Anda bisa kembali ke login setelah mengecek inbox." : "Masukkan email akun untuk menerima link reset password."}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full bg-slate-50 text-slate-400">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {isSuccess ? (
+          <div className="mt-5 rounded-[24px] bg-[#F7FAFC] p-4 ring-1 ring-slate-100">
+            <div className="flex items-start gap-3">
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#ECF7F8] text-[#1C9AA0]">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold text-[#082B5C]">Link reset berhasil dibuat</div>
+                <div className="mt-1 text-xs leading-5 text-slate-500">
+                  Instruksi reset password sudah disiapkan untuk <span className="font-semibold text-[#082B5C]">{email}</span>.
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="mt-4 flex w-full items-center justify-center rounded-2xl bg-[#082B5C] px-4 py-3 text-sm font-semibold text-white"
+            >
+              Kembali ke login
+            </button>
+          </div>
+        ) : (
+          <form className="mt-5" onSubmit={onSubmit}>
+            <Field
+              label="Email akun"
+              type="email"
+              value={email}
+              autoComplete="email"
+              placeholder="nama@email.com"
+              error={error}
+              onChange={onChange}
+            />
+
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-[#082B5C]"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="flex items-center justify-center gap-2 rounded-2xl bg-[#082B5C] px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isSubmitting ? (
+                  <>
+                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                    Mengirim...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="h-4 w-4" />
+                    Kirim link
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   );
+}
+
+function validateLoginFields(email, password) {
+  const nextErrors = {};
+
+  if (!email.trim()) {
+    nextErrors.email = "Email wajib diisi.";
+  } else if (!isValidEmail(email)) {
+    nextErrors.email = "Format email belum valid.";
+  }
+
+  if (!password.trim()) {
+    nextErrors.password = "Password wajib diisi.";
+  } else if (password.trim().length < 6) {
+    nextErrors.password = "Password minimal 6 karakter.";
+  }
+
+  return nextErrors;
+}
+
+function isValidEmail(value) {
+  return EMAIL_PATTERN.test(value.trim());
 }
